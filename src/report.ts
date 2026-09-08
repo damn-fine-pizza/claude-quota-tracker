@@ -18,7 +18,7 @@ export function printStatus(argv: string[]): void {
     const ov = overview(store, Date.now());
     if (asJson) { console.log(JSON.stringify(ov, null, 2)); return; }
     if (ov.windows.length === 0) {
-      console.log("사용량 데이터 없음 — 먼저 `quota poll`을 실행하세요.");
+      console.log("No usage data yet — run `quota poll` first.");
       return;
     }
     for (const w of ov.windows) {
@@ -59,8 +59,8 @@ export function printHint(argv: string[]): void {
     if (!s || s.pct == null || s.pct < threshold) return;
     const eta = s.exhaustionEpochMs != null ? ` (100% by ${fmt(s.exhaustionEpochMs)})` : "";
     console.log(
-      `[quota] 세션 윈도우 ${s.pct}%${eta} — 무겁거나 급하지 않은 작업은 ` +
-      `\`quota enqueue --night\`로 야간 예약을 고려하세요.`,
+      `[quota] session window ${s.pct}%${eta} — for heavy or non-urgent work, ` +
+      `consider scheduling it for the night window with \`quota enqueue --night\`.`,
     );
   } finally {
     store.close();
@@ -74,7 +74,7 @@ export function printTasks(argv: string[]): void {
   try {
     const tasks = store.listTasks();
     if (asJson) { console.log(JSON.stringify(tasks, null, 2)); return; }
-    if (tasks.length === 0) { console.log("등록된 태스크 없음."); return; }
+    if (tasks.length === 0) { console.log("No tasks enqueued."); return; }
     for (const t of tasks) {
       const p = t.prompt.replace(/\s+/g, " ").slice(0, 56);
       console.log(
