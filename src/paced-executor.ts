@@ -70,6 +70,8 @@ export async function runPacedOnce(): Promise<boolean> {
       slackPct: pacingCfg.slackPct,
       sessionWindowMs: pacingCfg.sessionWindowHours * 60 * 60 * 1000,
       weeklyWindowMs: pacingCfg.weeklyWindowHours * 60 * 60 * 1000,
+      sessionPredictedPctAtReset: latest.sessionForecast?.predictedPctAtReset ?? null,
+      weeklyPredictedPctAtReset: latest.weeklyForecast?.predictedPctAtReset ?? null,
     });
 
     const insideNight = inNightWindow(nowMs, config.nightWindow);

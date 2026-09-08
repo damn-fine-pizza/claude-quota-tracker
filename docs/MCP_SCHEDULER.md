@@ -114,14 +114,16 @@ Runs a specific queued task through the existing manual executor. Pacing is bypa
 
 ## Scheduling model
 
-For each quota window:
+For each quota window, admission is gated on the poller's burn-rate forecast (see `forecast.ts`), not on cumulative usage against a fixed ideal curve:
 
 ```text
-target usage = usable budget × elapsed fraction
-allowed usage = min(usable budget, target usage + slack)
+predicted usage at reset = current usage + (recent burn rate × remaining time)
+on pace to exceed = predicted usage at reset > budget + slack
 ```
 
-A queued opportunistic task starts only when both the 5-hour and weekly windows are at or below their allowed usage. The first window over its allowance is the bottleneck.
+A queued opportunistic task starts only when both the 5-hour and weekly windows are **not** on pace to exceed their budget. The window furthest past its budget+slack threshold is the bottleneck.
+
+This means cumulative usage alone never blocks work that is safely below the guard: if you burned 36% of the weekly budget on day one but the recent rate projects only 70% by the real reset, work keeps flowing — it only pauses once the *trend*, not the total-so-far, threatens to blow the guard before reset. `get_pacing_status` also reports `idealDailyPct` per window (remaining budget ÷ remaining time to reset) as a reference "how much can I still spend per day" figure, and the older elapsed-fraction `targetPct`/`allowedPct` fields as informational context — neither gates admission anymore.
 
 The poller launches at most one paced task per fresh quota snapshot. It never drains multiple tasks using the same stale percentage reading.
 
