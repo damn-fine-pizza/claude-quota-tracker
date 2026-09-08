@@ -75,7 +75,8 @@ export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {})
   if (!isLoopbackHost(host)) {
     console.warn(`[mcp-http] WARNING: binding to non-loopback host "${host}" exposes this MCP server (including run_now) beyond localhost.`);
   }
-  const allowedHosts = allowedHostHeaders(host, port);
+  // Refined below once the actual bound port is known (port 0 means "pick one" — used by tests).
+  let allowedHosts = allowedHostHeaders(host, port);
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
@@ -143,6 +144,7 @@ export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {})
       resolve(typeof addr === "object" && addr ? addr.port : port);
     });
   });
+  allowedHosts = allowedHostHeaders(host, actualPort);
   console.log(`[mcp-http] listening on http://${host}:${actualPort}/mcp (health: http://${host}:${actualPort}/health)`);
   return {
     url: `http://${host}:${actualPort}`,
