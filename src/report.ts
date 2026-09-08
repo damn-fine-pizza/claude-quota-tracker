@@ -21,6 +21,7 @@ export function printStatus(argv: string[]): void {
       console.log("No usage data yet — run `claude-quota poll` first.");
       return;
     }
+    console.log(`Plan: ${ov.planName ?? "not set — set it in the dashboard Settings panel or config.json (plan.name)"}`);
     for (const w of ov.windows) {
       let fc = "";
       if (w.forecast && w.pct != null && w.resetEpochMs != null) {

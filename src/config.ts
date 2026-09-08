@@ -78,6 +78,16 @@ export interface UpdateConfig {
   channel: string;
 }
 
+export interface PlanConfig {
+  /**
+   * Free-text subscription label (e.g. "Max20"). `claude -p "/usage"` never
+   * states which plan is active, so this can't be auto-detected — the user
+   * sets it once (dashboard Settings or config.json). Display-only, never
+   * read by pacing/guard logic.
+   */
+  name: string | null;
+}
+
 export interface IngestConfig {
   /**
    * Extra session-log roots scanned in addition to ~/.claude/projects. Custom
@@ -97,6 +107,7 @@ export interface Config {
   ingest: IngestConfig;
   mcp: McpConfig;
   update: UpdateConfig;
+  plan: PlanConfig;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -140,6 +151,7 @@ export const DEFAULT_CONFIG: Config = {
     repository: "damn-fine-pizza/claude-quota-tracker",
     channel: "stable",
   },
+  plan: { name: null },
 };
 
 /**
@@ -198,6 +210,7 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
       http: { ...DEFAULT_CONFIG.mcp.http, ...(raw.mcp?.http ?? {}) },
     },
     update: { ...DEFAULT_CONFIG.update, ...(raw.update ?? {}) },
+    plan: { ...DEFAULT_CONFIG.plan, ...(raw.plan ?? {}) },
   };
 }
 

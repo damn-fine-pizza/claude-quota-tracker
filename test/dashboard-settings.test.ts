@@ -63,6 +63,29 @@ describe("currentSettings / applySettingsPatch", () => {
     expect(() => applySettingsPatch({ pacing: { adaptiveMinSamples: 0 } })).toThrow();
     expect(() => applySettingsPatch({ dashboard: { autoOpen: "yes" } })).toThrow();
   });
+
+  it("defaults plan.name to null and lets it be set, trimmed, and cleared", () => {
+    writeFileSync(CONFIG_PATH, JSON.stringify({}));
+    expect(currentSettings().plan.name).toBeNull();
+
+    const withName = applySettingsPatch({ plan: { name: "  Max20  " } });
+    expect(withName.plan.name).toBe("Max20");
+    expect(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).plan).toEqual({ name: "Max20" });
+
+    const cleared = applySettingsPatch({ plan: { name: "" } });
+    expect(cleared.plan.name).toBeNull();
+  });
+
+  it("rejects a non-string, non-null plan.name", () => {
+    writeFileSync(CONFIG_PATH, JSON.stringify({}));
+    expect(() => applySettingsPatch({ plan: { name: 42 } })).toThrow();
+  });
+
+  it("leaves plan untouched when only pacing is patched", () => {
+    writeFileSync(CONFIG_PATH, JSON.stringify({ plan: { name: "Max20" } }));
+    const next = applySettingsPatch({ pacing: { slackPct: 7 } });
+    expect(next.plan.name).toBe("Max20");
+  });
 });
 
 describe("originAllowed", () => {

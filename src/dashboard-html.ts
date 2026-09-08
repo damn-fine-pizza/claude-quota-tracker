@@ -36,6 +36,8 @@ function gauge(w){
 function renderOverview(ov){
   el('updated').textContent = ov.ageMin==null? 'no data' : ('updated '+ov.ageMin+'m ago');
   el('scope').textContent = ov.scopeNote || '';
+  el('plan').textContent = ov.planName || 'plan not set';
+  el('plan').classList.toggle('warn', !ov.planName);
   el('gauges').innerHTML = (ov.windows&&ov.windows.length)? ov.windows.map(gauge).join('') : empty('no window data yet — run the poller first');
   el('kpi').innerHTML =
     kpi('7d tokens (total)', fmtN(ov.kpi.tokens7d)) +
@@ -179,6 +181,7 @@ function loadSettings(){
     el('s-deadlineSafetyMinutes').value = s.pacing.deadlineSafetyMinutes;
     el('s-adaptiveMinSamples').value = s.pacing.adaptiveMinSamples;
     el('s-autoOpen').checked = !!s.dashboard.autoOpen;
+    el('s-planName').value = s.plan.name || '';
   }).catch(function(e){ el('settingsMsg').textContent = 'load failed: '+e; });
 }
 function saveSettings(){
@@ -192,7 +195,8 @@ function saveSettings(){
       deadlineSafetyMinutes: Number(el('s-deadlineSafetyMinutes').value),
       adaptiveMinSamples: Number(el('s-adaptiveMinSamples').value)
     },
-    dashboard: { autoOpen: el('s-autoOpen').checked }
+    dashboard: { autoOpen: el('s-autoOpen').checked },
+    plan: { name: el('s-planName').value }
   };
   el('settingsMsg').textContent = 'saving…';
   fetch('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
@@ -211,7 +215,8 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,B
 header{display:flex;align-items:baseline;gap:14px;padding:18px 24px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2;}
 header h1{font-size:17px;margin:0;font-weight:600;}
 header .muted,#scope{color:var(--muted);font-size:12px;}
-#refresh{margin-left:auto;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;}
+.planbadge{border:1px solid var(--line);border-radius:5px;padding:2px 8px;}
+#refresh{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;}
 #refresh:hover{border-color:#3a4250;}
 main{max-width:1180px;margin:0 auto;padding:22px 24px;display:flex;flex-direction:column;gap:22px;}
 .row{display:grid;gap:18px;}
@@ -257,7 +262,7 @@ main{max-width:1180px;margin:0 auto;padding:22px 24px;display:flex;flex-directio
 .qchip{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 14px;text-align:center;}
 .qn{display:block;font-size:20px;font-weight:600;}
 .ql{font-size:11px;color:var(--muted);}
-.autorefresh{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;}
+.autorefresh{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;margin-left:auto;}
 .setgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;}
 @media(max-width:720px){.setgrid{grid-template-columns:1fr;}}
 .setgrid label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
@@ -276,6 +281,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 <body>
 <header>
   <h1>Claude Quota</h1>
+  <span id="plan" class="planbadge muted">loading…</span>
   <span id="updated" class="muted">loading…</span>
   <span id="scope"></span>
   <label class="autorefresh"><input type="checkbox" id="autorefresh"/> Auto-refresh (60s)</label>
@@ -303,6 +309,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       <label>Deadline safety (minutes) <input type="number" id="s-deadlineSafetyMinutes" min="0" step="1"/></label>
       <label>Adaptive min samples <input type="number" id="s-adaptiveMinSamples" min="1" step="1"/></label>
       <label><input type="checkbox" id="s-autoOpen"/> Auto-open dashboard when mcp/mcp-http starts</label>
+      <label>Plan name <input type="text" id="s-planName" placeholder="e.g. Max20"/></label>
     </div>
     <div class="setactions"><button id="settingsSave">Save</button><span id="settingsMsg" class="muted"></span></div>
   </section>
