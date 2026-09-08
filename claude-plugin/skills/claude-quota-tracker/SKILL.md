@@ -1,9 +1,9 @@
 ---
-name: quota-tracker
+name: claude-quota-tracker
 description: Check Claude Max20 quota (5h session + weekly windows) and schedule heavy work to run unattended during low-usage night hours, via the local `claude-quota` CLI. Triggers when the user asks about their Claude usage/limits/resets, or wants to defer a slow task to off-hours instead of running it now. Trigger phrases (the user often types Korean) - "how much quota left", "how much have I used", "when does it reset", "at this rate will I run out", "run this tonight", "schedule for off-hours", "queue this up", "do this later", "what's in the queue", "open the dashboard", "quota status", "내 쿼터", "사용량 얼마나 남았어", "한도 얼마나 썼어", "리셋 언제", "이거 밤에 돌려줘", "야간에 예약해줘", "스케줄러에 넣어줘", "나중에 실행", "큐에 뭐 있어", "대시보드 열어줘".
 ---
 
-# quota-tracker
+# claude-quota-tracker
 
 Wraps the locally installed `claude-quota` CLI (a launcher at `~/.local/bin/claude-quota`)
 to read Claude Max20 usage and schedule tasks onto the night executor. If `claude-quota`
