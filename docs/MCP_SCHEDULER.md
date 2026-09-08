@@ -35,7 +35,7 @@ npm run mcp
 or, when using the installed/baked CLI:
 
 ```bash
-quota mcp
+claude-quota mcp
 ```
 
 Example `.mcp.json` entry:
@@ -44,7 +44,7 @@ Example `.mcp.json` entry:
 {
   "mcpServers": {
     "quota-tracker": {
-      "command": "quota",
+      "command": "claude-quota",
       "args": ["mcp"]
     }
   }
@@ -52,8 +52,8 @@ Example `.mcp.json` entry:
 ```
 
 Multiple MCP clients that want to share **one** running server instead of
-each spawning their own `quota mcp` process can use the local Streamable
-HTTP transport (`quota mcp-http`, `http://127.0.0.1:47601/mcp`) instead —
+each spawning their own `claude-quota mcp` process can use the local Streamable
+HTTP transport (`claude-quota mcp-http`, `http://127.0.0.1:47601/mcp`) instead —
 same tools, same authorization rules, see [`MCP_HTTP.md`](MCP_HTTP.md).
 
 ## Tools

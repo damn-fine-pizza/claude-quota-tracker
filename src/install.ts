@@ -16,7 +16,8 @@ const APP_CONFIG = join(APP_HOME, "config.json");
 const APP_PLUGINS = join(APP_HOME, "plugins");
 const LIB_DIR = join(APP_HOME, "lib");
 const LIB_DIST = join(LIB_DIR, "dist");
-export const LAUNCHER = join(homedir(), ".local", "bin", "quota");
+export const LAUNCHER = join(homedir(), ".local", "bin", "claude-quota");
+const OLD_LAUNCHER = join(homedir(), ".local", "bin", "quota");
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
 const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "quota-tracker.service");
 const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "quota-tracker.timer");
@@ -71,6 +72,22 @@ export function installRuntime(nodePath: string, deps: { npmBin?: string; srcDis
   mkdirSync(dirname(LAUNCHER), { recursive: true });
   writeFileSync(LAUNCHER, `#!/bin/sh\nexport QUOTA_TRACKER_HOME="\${QUOTA_TRACKER_HOME:-$HOME/.quota-tracker}"\nexec "${nodePath}" "${join(LIB_DIST, "cli.js")}" "$@"\n`);
   chmodSync(LAUNCHER, 0o755); console.log(`✓ launcher → ${LAUNCHER}`);
+  removeStaleQuotaLauncher();
+}
+
+function removeStaleQuotaLauncher(): void {
+  // `quota` collides with the standard Unix disk-quota command (quota(1)); the
+  // launcher was renamed to claude-quota. Only remove our own old shim, never
+  // an unrelated file a user might have at this path.
+  if (!existsSync(OLD_LAUNCHER)) return;
+  try {
+    if (readFileSync(OLD_LAUNCHER, "utf8").includes("QUOTA_TRACKER_HOME")) {
+      rmSync(OLD_LAUNCHER, { force: true });
+      console.log(`✓ removed stale launcher → ${OLD_LAUNCHER} (renamed to claude-quota)`);
+    }
+  } catch {
+    // not ours or unreadable — leave it alone
+  }
 }
 function installHome(): void {
   mkdirSync(APP_DATA, { recursive: true });
@@ -121,10 +138,10 @@ export async function install(deps: { npmBin?: string; srcDist?: string } = {}):
   else if (platform === "linux") {
     if (!installSystemd()) {
       console.log("⚠ systemd --user unavailable; install completed without a background scheduler.");
-      console.log("  Run `quota daemon` in any long-lived shell/supervisor (works in Distrobox/containers/no-init environments). ");
+      console.log("  Run `claude-quota daemon` in any long-lived shell/supervisor (works in Distrobox/containers/no-init environments). ");
     }
   } else {
-    console.log("⚠ no native scheduler integration for this platform; use `quota daemon`.");
+    console.log("⚠ no native scheduler integration for this platform; use `claude-quota daemon`.");
   }
   console.log(`✓ config: ${APP_CONFIG}`);
 }

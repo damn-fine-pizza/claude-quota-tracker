@@ -204,7 +204,7 @@ function parseFlags(argv: string[]): Record<string, string | boolean> {
 
 /**
  * Non-interactive enqueue from flags:
- *   quota enqueue --prompt "..." --size xs --perm read-only [--night]
+ *   claude-quota enqueue --prompt "..." --size xs --perm read-only [--night]
  *                 [--cwd PATH] [--priority N]
  * --night opts the task into unattended night execution (and records the
  * night-window confirmation, since the flag itself is the explicit opt-in).
@@ -270,7 +270,7 @@ export function enqueueFromArgs(argv: string[]): void {
       console.log("  will run automatically at the night window's lowest-usage hour (at the window start until enough data accumulates).");
     }
     if (!rule.unattendedOk) {
-      console.log(`  cannot run unattended — run: quota executor --task ${task.id}`);
+      console.log(`  cannot run unattended — run: claude-quota executor --task ${task.id}`);
     }
   } finally {
     store.close();

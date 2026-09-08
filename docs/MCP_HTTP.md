@@ -1,15 +1,15 @@
 # MCP over Streamable HTTP
 
-`quota mcp` (stdio) still works exactly as before — this adds a second,
+`claude-quota mcp` (stdio) still works exactly as before — this adds a second,
 persistent transport so **multiple MCP clients can share one running server**
-instead of each spawning its own `quota mcp` process. Both transports run the
+instead of each spawning its own `claude-quota mcp` process. Both transports run the
 same tool registry (`src/mcp/tools.ts`); nothing about the tools themselves
 changes based on which one you use.
 
 ## Start the server
 
 ```bash
-quota mcp-http
+claude-quota mcp-http
 ```
 
 or, from a source checkout:
@@ -22,9 +22,9 @@ npm run mcp-http
 By default it binds to `127.0.0.1:47601` and serves:
 
 - `POST /mcp` — the MCP Streamable HTTP endpoint (JSON-RPC 2.0)
-- `GET /health` — health/version JSON, for scripts and `quota doctor`
+- `GET /health` — health/version JSON, for scripts and `claude-quota doctor`
 
-`quota mcp-http` runs in the foreground. Use whatever supervisor fits your
+`claude-quota mcp-http` runs in the foreground. Use whatever supervisor fits your
 setup — `systemd --user`, `tmux`/`screen`, a container supervisor, or nothing
 at all if you just want it up for the current session.
 
@@ -70,11 +70,11 @@ Streamable HTTP one.
 }
 ```
 
-`enabled` is informational for `quota doctor` and future supervisor
-integrations — running `quota mcp-http` directly always starts the server
+`enabled` is informational for `claude-quota doctor` and future supervisor
+integrations — running `claude-quota mcp-http` directly always starts the server
 regardless of this flag (it just prints a note if it's `false`).
 
-`quota mcp-http` **always defaults to a loopback bind**. If you set `host` to
+`claude-quota mcp-http` **always defaults to a loopback bind**. If you set `host` to
 anything other than `127.0.0.1` / `localhost` / `::1`, it prints a loud
 warning on startup — nothing stops you, but you are explicitly exposing the
 server (including `run_now`, which executes Claude Code) beyond your own
@@ -121,11 +121,11 @@ tool registry.
 
 ## Troubleshooting
 
-- `quota doctor` checks whether the configured port is free, or already held
+- `claude-quota doctor` checks whether the configured port is free, or already held
   by a genuine quota-tracker instance (via `/health`) vs. something else.
 - `curl http://127.0.0.1:47601/health` — should return
   `{"ok":true,"name":"claude-quota-tracker",...}` while the server is running.
-- If a client reports a connection refused, confirm `quota mcp-http` is
+- If a client reports a connection refused, confirm `claude-quota mcp-http` is
   actually running (it does not run automatically — nothing installs it as a
   service by default) and that the client's URL matches `mcp.http.host`/
   `mcp.http.port` in `config.json` (default `127.0.0.1:47601`).

@@ -70,7 +70,7 @@ export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {})
     throw new Error(`invalid mcp.http.port: ${port}`);
   }
   if (!enabled) {
-    console.error("[mcp-http] note: mcp.http.enabled is false in config.json — starting anyway since `quota mcp-http` was run directly.");
+    console.error("[mcp-http] note: mcp.http.enabled is false in config.json — starting anyway since `claude-quota mcp-http` was run directly.");
   }
   if (!isLoopbackHost(host)) {
     console.warn(`[mcp-http] WARNING: binding to non-loopback host "${host}" exposes this MCP server (including run_now) beyond localhost.`);

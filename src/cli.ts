@@ -10,35 +10,35 @@ import { printHint, printStatus, printTasks } from "./report.js";
 import { runPacedOnce } from "./paced-executor.js";
 import { getRuntimeInfo } from "./version.js";
 
-const HELP = `quota — Claude quota tracker & quota-aware task orchestrator
+const HELP = `claude-quota — Claude quota tracker & quota-aware task orchestrator
 
 Usage:
-  quota install            install launcher + native scheduler when available
-  quota uninstall          remove native scheduler integration (data preserved)
-  quota daemon             portable polling loop (no systemd/launchd required)
-  quota poll               poll usage once
-  quota executor           legacy night queue loop
-  quota paced-executor     quota-aware admission + at most one task
-  quota executor --task N  run task N manually (hard quota guards preserved)
-  quota enqueue            interactive task registration
-  quota mcp                start MCP stdio server
-  quota mcp-http           start MCP Streamable HTTP server (127.0.0.1:47601/mcp)
-  quota version [--json]   runtime/version info
-  quota doctor [--json]    diagnose install, MCP, scheduler, platform integration
-  quota update [--check]   update the installed runtime from a git checkout
-  quota status [--json]    current usage/forecast/KPI
-  quota tasks [--json]     task queue state
-  quota hint [--threshold N]
-  quota menubar            SwiftBar output (macOS)
-  quota dashboard [--open] local dashboard
-  quota ingest             ingest Claude Code session logs
-  quota paths              print config/data paths
+  claude-quota install            install launcher + native scheduler when available
+  claude-quota uninstall          remove native scheduler integration (data preserved)
+  claude-quota daemon             portable polling loop (no systemd/launchd required)
+  claude-quota poll               poll usage once
+  claude-quota executor           legacy night queue loop
+  claude-quota paced-executor     quota-aware admission + at most one task
+  claude-quota executor --task N  run task N manually (hard quota guards preserved)
+  claude-quota enqueue            interactive task registration
+  claude-quota mcp                start MCP stdio server
+  claude-quota mcp-http           start MCP Streamable HTTP server (127.0.0.1:47601/mcp)
+  claude-quota version [--json]   runtime/version info
+  claude-quota doctor [--json]    diagnose install, MCP, scheduler, platform integration
+  claude-quota update [--check]   update the installed runtime from a git checkout
+  claude-quota status [--json]    current usage/forecast/KPI
+  claude-quota tasks [--json]     task queue state
+  claude-quota hint [--threshold N]
+  claude-quota menubar            SwiftBar output (macOS)
+  claude-quota dashboard [--open] local dashboard
+  claude-quota ingest             ingest Claude Code session logs
+  claude-quota paths              print config/data paths
 `;
 
 function checkNodeVersion(): boolean {
   const [maj, min] = process.versions.node.split(".").map(Number);
   if (maj < 22 || (maj === 22 && min < 5)) {
-    console.error(`quota requires Node 22.5+ (current: ${process.versions.node})`);
+    console.error(`claude-quota requires Node 22.5+ (current: ${process.versions.node})`);
     return false;
   }
   return true;

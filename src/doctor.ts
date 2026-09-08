@@ -75,12 +75,12 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   push(
     "runtime", "installed runtime",
     existsSync(installedCli) ? "ok" : "warn",
-    existsSync(installedCli) ? installedCli : `not found at ${installedCli} — run \`quota install\``,
+    existsSync(installedCli) ? installedCli : `not found at ${installedCli} — run \`claude-quota install\``,
   );
   push(
     "runtime", "launcher",
     existsSync(LAUNCHER) ? "ok" : "warn",
-    existsSync(LAUNCHER) ? LAUNCHER : `not found at ${LAUNCHER} — run \`quota install\``,
+    existsSync(LAUNCHER) ? LAUNCHER : `not found at ${LAUNCHER} — run \`claude-quota install\``,
   );
 
   if (!commandWorks("claude", ["--version"])) {
@@ -143,13 +143,13 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
     push("desktop", "notify-send", commandWorks("notify-send", ["--version"]) ? "ok" : "warn", "used for notifications");
     const systemd = systemdUsable();
     push("scheduler", "systemd-user", systemd ? "ok" : "warn", systemd ? "available" : "unavailable");
-    push("scheduler", "portable-daemon", "ok", "available via `quota daemon`");
+    push("scheduler", "portable-daemon", "ok", "available via `claude-quota daemon`");
   }
 
   if (detectContainerEnvironment()) {
     push(
       "container", "environment", "warn",
-      "container/Distrobox-like environment detected — use `quota daemon` instead of systemd/launchd",
+      "container/Distrobox-like environment detected — use `claude-quota daemon` instead of systemd/launchd",
     );
   }
 
@@ -159,6 +159,6 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 export function formatDoctorReport(report: DoctorReport): string {
   const icon: Record<CheckStatus, string> = { ok: "✓", warn: "⚠", fail: "✗" };
   const lines = report.checks.map((c) => `${icon[c.status]} [${c.category}] ${c.name}: ${c.detail}`);
-  lines.push("", report.ok ? "quota doctor: OK" : "quota doctor: FAILED (see ✗ above)");
+  lines.push("", report.ok ? "claude-quota doctor: OK" : "claude-quota doctor: FAILED (see ✗ above)");
   return lines.join("\n");
 }

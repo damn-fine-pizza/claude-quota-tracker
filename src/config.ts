@@ -71,7 +71,7 @@ export interface McpConfig {
 }
 
 export interface UpdateConfig {
-  /** "owner/repo" queried by `quota update --check`. Never the upstream fork. */
+  /** "owner/repo" queried by `claude-quota update --check`. Never the upstream fork. */
   repository: string;
   channel: string;
 }

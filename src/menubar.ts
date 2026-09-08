@@ -118,9 +118,9 @@ export function renderMenubar(nowMs: number = Date.now()): string {
 
   const ageMin = Math.round((nowMs - latest.generatedAtMs) / 60000);
   lines.push("---");
-  // In the baked binary process.execPath IS the quota binary; in dev it's node
-  // (the menubar only runs from the binary, so this resolves correctly there).
-  const bin = isSea() ? process.execPath : join(homedir(), ".local", "bin", "quota");
+  // In the baked binary process.execPath IS the claude-quota binary; in dev it's
+  // node (the menubar only runs from the binary, so this resolves correctly there).
+  const bin = isSea() ? process.execPath : join(homedir(), ".local", "bin", "claude-quota");
   lines.push(
     `Open Dashboard | bash="${bin}" param1=dashboard param2=--open terminal=false refresh=false`,
   );

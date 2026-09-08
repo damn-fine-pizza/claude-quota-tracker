@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Template only. `quota install` (src/install.ts) generates the real plist
+<!-- Template only. `claude-quota install` (src/install.ts) generates the real plist
      with absolute paths filled in for the current user. Placeholders:
        __NODE__   absolute node path (e.g. /opt/homebrew/bin/node)
        __CLI__    ~/.quota-tracker/lib/dist/cli.js
