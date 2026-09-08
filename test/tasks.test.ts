@@ -220,19 +220,19 @@ describe("confirmation phrases (spec gate wording, snapshot-fixed)", () => {
 
   it("write-scoped phrase states mode, isolation, and unattended night run", () => {
     expect(confirmPhrase("write-scoped", nw)).toMatchInlineSnapshot(
-      `"확인: 이 태스크는 권한모드 "acceptEdits"로, git worktree 격리 하에 야간(23:00–08:00) 사람 개입 없이 무인 실행됩니다."`,
+      `"Confirmed: this task will run unattended in permission mode "acceptEdits", under git worktree isolation during the night window (23:00–08:00) with no human present."`,
     );
   });
 
   it("read-only phrase states mode and unattended night run", () => {
     expect(confirmPhrase("read-only", nw)).toMatchInlineSnapshot(
-      `"확인: 이 태스크는 권한모드 "default"로 야간(23:00–08:00) 사람 개입 없이 무인 실행됩니다."`,
+      `"Confirmed: this task will run unattended in permission mode "default" during the night window (23:00–08:00) with no human present."`,
     );
   });
 
   it("destructive phrase refuses unattended execution (gate 1 wording)", () => {
     expect(confirmPhrase("destructive", nw)).toMatchInlineSnapshot(
-      `"이 태스크(destructive)는 무인 실행이 불가하여 야간 배치에서 제외됩니다. 실행은 사용자가 보는 앞에서 수동으로만 가능합니다."`,
+      `"This task (destructive) cannot run unattended, so it is excluded from the night batch. It can only be run manually while the user is present."`,
     );
   });
 });

@@ -19,12 +19,12 @@ export const TRIAGE: Record<PermissionClass, TriageRule> = {
   "read-only": {
     permissionMode: "default",
     unattendedOk: true,
-    summary: "파일 읽기·분석·리포트만 (읽기 전용 도구로 제한)",
+    summary: "Reads, analysis, and reports only (restricted to read-only tools)",
   },
   "write-scoped": {
     permissionMode: "acceptEdits",
     unattendedOk: true,
-    summary: "저장소 파일 수정 (git worktree 격리)",
+    summary: "Edits repository files (isolated via git worktree)",
   },
   destructive: {
     // Manual-only. Still headless (-p) for estimation integrity, so
@@ -32,7 +32,7 @@ export const TRIAGE: Record<PermissionClass, TriageRule> = {
     // acceptEdits at least lets file edits proceed under supervision.
     permissionMode: "acceptEdits",
     unattendedOk: false,
-    summary: "삭제·push·외부 발신 — 무인 실행 불가",
+    summary: "Deletes, pushes, external sends — cannot run unattended",
   },
 };
 
@@ -176,14 +176,14 @@ export function confirmPhrase(
   const rule = TRIAGE[cls];
   if (!rule.unattendedOk) {
     return (
-      `이 태스크(${cls})는 무인 실행이 불가하여 야간 배치에서 제외됩니다. ` +
-      `실행은 사용자가 보는 앞에서 수동으로만 가능합니다.`
+      `This task (${cls}) cannot run unattended, so it is excluded from the night batch. ` +
+      `It can only be run manually while the user is present.`
     );
   }
-  const isolation = cls === "write-scoped" ? ", git worktree 격리 하에" : "";
+  const isolation = cls === "write-scoped" ? ", under git worktree isolation" : "";
   return (
-    `확인: 이 태스크는 권한모드 "${rule.permissionMode}"로${isolation} ` +
-    `야간(${nightWindow.start}–${nightWindow.end}) 사람 개입 없이 무인 실행됩니다.`
+    `Confirmed: this task will run unattended in permission mode "${rule.permissionMode}"${isolation} ` +
+    `during the night window (${nightWindow.start}–${nightWindow.end}) with no human present.`
   );
 }
 
@@ -192,10 +192,10 @@ export function nightWindowConfirmPhrase(
   tz: string,
 ): string {
   return (
-    `night window가 아직 컨펌되지 않았습니다. 컨펌 전까지 야간 배치는 실행되지 않습니다.\n` +
-    `  제안 창: ${nightWindow.start} – ${nightWindow.end}\n` +
-    `  시스템 타임존: ${tz}\n` +
-    `이 창과 타임존으로 야간 무인 실행을 허용합니까?`
+    `The night window has not been confirmed yet. The night batch will not run until it is confirmed.\n` +
+    `  Proposed window: ${nightWindow.start} – ${nightWindow.end}\n` +
+    `  System timezone: ${tz}\n` +
+    `Allow unattended night execution with this window and timezone?`
   );
 }
 
