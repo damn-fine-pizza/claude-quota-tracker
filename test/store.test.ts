@@ -205,4 +205,18 @@ describe("Store task queue (in-memory)", () => {
     expect(store.peekNextTask()?.status).toBe("queued"); // still unclaimed
     store.close();
   });
+
+  it("updateTaskPriority changes claim order and returns null for an unknown id", () => {
+    const store = new Store(":memory:");
+    const low = store.enqueueTask(100, taskInput({ prompt: "low", priority: 0 }));
+    store.enqueueTask(200, taskInput({ prompt: "high", priority: 9 }));
+    expect(store.peekNextTask()?.prompt).toBe("high");
+
+    const updated = store.updateTaskPriority(low.id, 100, 300);
+    expect(updated?.priority).toBe(100);
+    expect(store.peekNextTask()?.prompt).toBe("low"); // now outranks the old high-priority task
+
+    expect(store.updateTaskPriority(999_999, 5, 400)).toBeNull();
+    store.close();
+  });
 });

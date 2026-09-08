@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { DATA_DIR, DB_PATH, loadConfig, saveConfigPatch, type DashboardConfig } from "./config.js";
 import * as api from "./dashboard-api.js";
 import { DASHBOARD_HTML } from "./dashboard-html.js";
-import { loadPacingConfig, type PacingConfig } from "./pacing-config.js";
+import { bool, loadPacingConfig, mergePacingPatch, obj, type PacingConfig } from "./pacing-config.js";
 import { openBrowserUrl } from "./platform.js";
 import { isSea } from "./sea.js";
 import { Store } from "./store.js";
@@ -76,35 +76,6 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
-function num(v: unknown, current: number, min: number): number {
-  if (v === undefined) return current;
-  if (typeof v !== "number" || !Number.isFinite(v) || v < min) throw new Error("invalid number");
-  return v;
-}
-function bool(v: unknown, current: boolean): boolean {
-  if (v === undefined) return current;
-  if (typeof v !== "boolean") throw new Error("invalid boolean");
-  return v;
-}
-function obj(v: unknown): Record<string, unknown> {
-  if (v === undefined) return {};
-  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new Error("expected an object");
-  return v as Record<string, unknown>;
-}
-
-/** Merges a partial patch onto the CURRENT full section (not just defaults), so an unspecified field is never wiped. */
-function mergePacingPatch(current: PacingConfig, patch: unknown): PacingConfig {
-  const p = obj(patch);
-  return {
-    enabled: bool(p.enabled, current.enabled),
-    slackPct: num(p.slackPct, current.slackPct, 0),
-    sessionWindowHours: num(p.sessionWindowHours, current.sessionWindowHours, 0.1),
-    weeklyWindowHours: num(p.weeklyWindowHours, current.weeklyWindowHours, 0.1),
-    continuousEnabled: bool(p.continuousEnabled, current.continuousEnabled),
-    deadlineSafetyMinutes: num(p.deadlineSafetyMinutes, current.deadlineSafetyMinutes, 0),
-    adaptiveMinSamples: num(p.adaptiveMinSamples, current.adaptiveMinSamples, 1),
-  };
-}
 function mergeDashboardPatch(current: DashboardConfig, patch: unknown): DashboardConfig {
   const p = obj(patch);
   return { ...current, autoOpen: bool(p.autoOpen, current.autoOpen) };

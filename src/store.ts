@@ -224,6 +224,13 @@ export class Store {
     return row ? this.rowToTask(row) : null;
   }
 
+  updateTaskPriority(id: number, priority: number, ts: number): Task | null {
+    const row = this.db
+      .prepare("UPDATE tasks SET priority = ?, updated_ts = ? WHERE id = ? RETURNING *")
+      .get(priority, ts, id) as Record<string, unknown> | undefined;
+    return row ? this.rowToTask(row) : null;
+  }
+
   listTasks(statuses?: TaskStatus[]): Task[] {
     const rows = (
       statuses && statuses.length > 0

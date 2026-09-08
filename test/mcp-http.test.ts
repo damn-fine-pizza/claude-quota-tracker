@@ -74,7 +74,7 @@ describe("mcp-http", () => {
     const names = listBody.result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "get_pacing_status", "get_quota_status", "list_tasks",
-      "pause_task", "resume_task", "run_now", "submit_task",
+      "pause_task", "resume_task", "run_now", "set_pacing_config", "submit_task", "update_task",
     ]);
 
     const call = await rpc(server.url, {
@@ -84,6 +84,64 @@ describe("mcp-http", () => {
     const callBody = (await readRpcJson(call)) as { result: { content: Array<{ type: string; text: string }> } };
     const payload = JSON.parse(callBody.result.content[0].text);
     expect(payload).toHaveProperty("hardGuard");
+  });
+
+  it("update_task changes priority and, separately, intent/deadline via one call", async () => {
+    const submit = await rpc(server.url, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "submit_task", arguments: { prompt: "p", cwd: "/tmp", priority: 0 } },
+    });
+    const submitBody = (await readRpcJson(submit)) as { result: { content: Array<{ text: string }> } };
+    const taskId = JSON.parse(submitBody.result.content[0].text).task.id as number;
+
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const update = await rpc(server.url, {
+      jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "update_task", arguments: { task_id: taskId, priority: 42, intent: "deadline", deadline: future } },
+    });
+    const updateBody = (await readRpcJson(update)) as { result: { content: Array<{ text: string }> } };
+    const payload = JSON.parse(updateBody.result.content[0].text);
+    expect(payload.task.priority).toBe(42);
+    expect(payload.scheduling.intent).toBe("deadline");
+    expect(payload.scheduling.deadlineMs).toBe(Date.parse(future));
+  });
+
+  it("update_task never lets a destructive task become continuous-eligible", async () => {
+    const submit = await rpc(server.url, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "submit_task", arguments: { prompt: "p", cwd: "/tmp", permission: "destructive" } },
+    });
+    const submitBody = (await readRpcJson(submit)) as { result: { content: Array<{ text: string }> } };
+    const taskId = JSON.parse(submitBody.result.content[0].text).task.id as number;
+
+    const update = await rpc(server.url, {
+      jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "update_task", arguments: { task_id: taskId, continuous: true } },
+    });
+    const updateBody = (await readRpcJson(update)) as { result: { content: Array<{ text: string }> } };
+    const payload = JSON.parse(updateBody.result.content[0].text);
+    expect(payload.scheduling.continuousOk).toBe(false);
+  });
+
+  it("set_pacing_config patches only the given fields and get_pacing_status reflects it", async () => {
+    const set = await rpc(server.url, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "set_pacing_config", arguments: { enabled: true, slackPct: 12 } },
+    });
+    const setBody = (await readRpcJson(set)) as { result: { content: Array<{ text: string }> } };
+    const pacing = JSON.parse(setBody.result.content[0].text);
+    expect(pacing.enabled).toBe(true);
+    expect(pacing.slackPct).toBe(12);
+    expect(pacing.sessionWindowHours).toBe(5); // untouched field keeps its default/current value
+
+    const status = await rpc(server.url, {
+      jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "get_pacing_status", arguments: {} },
+    });
+    const statusBody = (await readRpcJson(status)) as { result: { content: Array<{ text: string }> } };
+    const statusPayload = JSON.parse(statusBody.result.content[0].text);
+    expect(statusPayload.config.enabled).toBe(true);
+    expect(statusPayload.config.slackPct).toBe(12);
   });
 
   it("rejects a mismatched Origin with 403 before reaching the MCP layer", async () => {

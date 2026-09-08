@@ -1,9 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { mkdirSync } from "node:fs";
 import { z } from "zod";
-import { DATA_DIR, DB_PATH, loadConfig } from "../config.js";
+import { DATA_DIR, DB_PATH, loadConfig, saveConfigPatch } from "../config.js";
 import { runManualTask } from "../executor.js";
-import { loadPacingConfig } from "../pacing-config.js";
+import { loadPacingConfig, mergePacingPatch } from "../pacing-config.js";
 import { quotaPacingVerdict } from "../pacing.js";
 import { readQuotaSnapshot } from "../quota-state.js";
 import { SchedulerMetaStore } from "../scheduler-meta.js";
@@ -116,6 +116,28 @@ export function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "set_pacing_config",
+    {
+      description: "Update quota pacing settings (docs/MCP_SCHEDULER.md). Only the provided fields are changed; omitted fields keep their current value.",
+      inputSchema: {
+        enabled: z.boolean().optional(),
+        slackPct: z.number().min(0).optional(),
+        sessionWindowHours: z.number().min(0.1).optional(),
+        weeklyWindowHours: z.number().min(0.1).optional(),
+        continuousEnabled: z.boolean().optional()
+          .describe("Permit explicitly opted-in tasks to run outside the confirmed night window."),
+        deadlineSafetyMinutes: z.number().min(0).optional(),
+        adaptiveMinSamples: z.number().min(1).optional(),
+      },
+    },
+    async (args) => {
+      const next = mergePacingPatch(loadPacingConfig(), args);
+      saveConfigPatch({ pacing: next });
+      return text(next);
+    },
+  );
+
+  server.registerTool(
     "list_tasks",
     { description: "List queued/running/completed tasks with scheduling metadata.", inputSchema: {} },
     async () => {
@@ -154,8 +176,46 @@ export function registerTools(server: McpServer): void {
       return text({ taskId: task_id, ...result });
     }),
   );
-}
 
+  server.registerTool(
+    "update_task",
+    {
+      description: "Change priority, intent, deadline, or continuous eligibility of an already-queued task. Only the provided fields are changed.",
+      inputSchema: {
+        task_id: z.number(),
+        priority: z.number().optional(),
+        intent: z.enum(["interactive", "deadline", "opportunistic"]).optional(),
+        deadline: z.union([z.string(), z.number(), z.null()]).optional(),
+        continuous: z.boolean().optional()
+          .describe("Explicitly opt this task into unattended execution outside the confirmed night window."),
+      },
+    },
+    async ({ task_id, priority, intent, deadline, continuous }) => withTask(task_id, (store, meta) => {
+      if (priority === undefined && intent === undefined && deadline === undefined && continuous === undefined) {
+        throw new Error("provide at least one of priority, intent, deadline, continuous");
+      }
+      let task = store.getTask(task_id)!;
+      if (priority !== undefined) {
+        task = store.updateTaskPriority(task_id, priority, Date.now()) ?? task;
+      }
+      let scheduling = meta.getOrDefault(task_id);
+      if (intent !== undefined || deadline !== undefined || continuous !== undefined) {
+        const nextIntent = intent ?? scheduling.intent;
+        const nextDeadline = deadline === undefined ? scheduling.deadlineMs : deadlineMs(deadline);
+        if (nextIntent === "deadline" && nextDeadline == null) throw new Error("deadline intent requires deadline");
+        if (nextDeadline !== null && nextDeadline <= Date.now()) throw new Error("deadline must be in the future");
+        const rule = TRIAGE[task.permissionClass];
+        const nextContinuous = (continuous ?? scheduling.continuousOk) && rule.unattendedOk && nextIntent !== "interactive";
+        scheduling = meta.upsert(task_id, Date.now(), {
+          intent: nextIntent, deadlineMs: nextDeadline,
+          estimatedTokens: scheduling.estimatedTokens,
+          paused: scheduling.paused, continuousOk: nextContinuous,
+        });
+      }
+      return text({ task, scheduling });
+    }),
+  );
+}
 async function withTask(
   taskId: number,
   fn: (store: Store, meta: SchedulerMetaStore) => unknown,

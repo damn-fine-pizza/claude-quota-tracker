@@ -92,6 +92,10 @@ Returns current 5-hour and weekly usage/reset values plus hard-guard status.
 
 Returns the ideal consumption target, allowed target including slack, and the binding window when work should be held.
 
+### `set_pacing_config`
+
+Updates one or more pacing fields (`enabled`, `slackPct`, `sessionWindowHours`, `weeklyWindowHours`, `continuousEnabled`, `deadlineSafetyMinutes`, `adaptiveMinSamples`) without touching config.json by hand. Only the provided fields change; the rest keep their current value. Also editable from the dashboard's Settings panel (`claude-quota dashboard --open`).
+
 ### `list_tasks`
 
 Returns the existing queue plus scheduling intent/deadline/pause/continuous metadata.
@@ -99,6 +103,10 @@ Returns the existing queue plus scheduling intent/deadline/pause/continuous meta
 ### `pause_task` / `resume_task`
 
 Temporarily remove/restore a task from automatic admission without changing the underlying queue lifecycle.
+
+### `update_task`
+
+Changes `priority`, `intent`, `deadline`, and/or `continuous` on an already-queued task — for when priorities change after a task has been sitting in the queue for a few days. Only the provided fields change. Never lets a `destructive` task become continuous-eligible, regardless of what's requested (same rule `submit_task` enforces).
 
 ### `run_now`
 
