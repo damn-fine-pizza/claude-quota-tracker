@@ -51,6 +51,11 @@ Example `.mcp.json` entry:
 }
 ```
 
+Multiple MCP clients that want to share **one** running server instead of
+each spawning their own `quota mcp` process can use the local Streamable
+HTTP transport (`quota mcp-http`, `http://127.0.0.1:47601/mcp`) instead —
+same tools, same authorization rules, see [`MCP_HTTP.md`](MCP_HTTP.md).
+
 ## Tools
 
 ### `submit_task`

@@ -26,7 +26,28 @@ npm run build
 npm run daemon
 ```
 
-The daemon performs the same repeated `pollOnce()` operation using `pollIntervalSeconds` from config. It is suitable for any external supervisor (`tmux`, `screen`, container supervisor, cron wrapper, etc.). `quota install` does **not** fail when systemd is unavailable; it installs the runtime and prints the daemon fallback command.
+The daemon performs the same repeated `pollOnce()` operation using `pollIntervalSeconds` from config. It is suitable for any external supervisor (`tmux`, `screen`, container supervisor, cron wrapper, etc.). `quota install` does **not** fail when systemd is unavailable; it installs the runtime and prints the daemon fallback command. Only one `quota daemon` instance runs at a time — a second one refuses to start (and says so) instead of double-polling the same queue.
+
+If you also want the local Streamable HTTP MCP transport, it's the same story — a separate foreground process, no systemd required:
+
+```bash
+quota mcp-http
+```
+
+See [`MCP_HTTP.md`](MCP_HTTP.md).
+
+## Containers / Distrobox
+
+`quota doctor` detects a container/Distrobox-like environment (via
+`/run/.containerenv`, `/.dockerenv`, or `$container`) and, when found,
+recommends `quota daemon` instead of treating the missing init system as an
+error — a container is a supported environment here, not a broken one.
+
+```bash
+quota doctor    # confirms what's available in this environment
+quota daemon     # portable scheduler, foreground
+quota mcp-http   # HTTP MCP transport, foreground, separate process
+```
 
 ## Desktop integration
 
@@ -36,4 +57,4 @@ The daemon performs the same repeated `pollOnce()` operation using `pollInterval
 - Linux browser opener: `xdg-open` when installed; absence is non-fatal
 - SwiftBar remains macOS-only and is skipped on Linux
 
-The MCP server, quota tracking, SQLite queue, pacing governor, task executor, and dashboard HTTP server do not require systemd.
+The MCP server (both stdio and HTTP transports), quota tracking, SQLite queue, pacing governor, task executor, and dashboard HTTP server do not require systemd. Run `quota doctor` any time to see exactly what's available and what isn't in the current environment — a missing systemd session is always a warning, never a failure.
