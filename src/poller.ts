@@ -168,8 +168,8 @@ function maybeSpawnExecutor(latest: LatestJson, config: Config): void {
         if (nowMs - last > 12 * 60 * 60 * 1000) {
           void sendMacNotification({
             mode: "scheduleHint", windowKey: "session_5h",
-            title: "quota-tracker: night window 재컨펌 필요",
-            message: `${verdict.reason} — npm run enqueue로 재컨펌하세요.`,
+            title: "quota-tracker: night window re-confirmation needed",
+            message: `${verdict.reason} — re-confirm with npm run enqueue.`,
           });
           state["nightWindow:reconfirm"] = nowMs;
           saveNotifyState(NOTIFY_STATE_PATH, state);
