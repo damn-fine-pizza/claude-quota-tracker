@@ -43,12 +43,18 @@ Example `.mcp.json` entry:
 ```json
 {
   "mcpServers": {
-    "quota-tracker": {
+    "claude-quota-tracker": {
       "command": "claude-quota",
       "args": ["mcp"]
     }
   }
 }
+```
+
+or via the CLI, once, at user scope so it's available in every project:
+
+```bash
+claude mcp add claude-quota-tracker --scope user -- claude-quota mcp
 ```
 
 Multiple MCP clients that want to share **one** running server instead of
