@@ -71,7 +71,8 @@ export async function main(argv: string[]): Promise<void> {
     case "mcp": return startMcpServer();
     case "mcp-http": {
       const { startMcpHttpServer } = await import("./mcp-http.js");
-      return startMcpHttpServer();
+      await startMcpHttpServer();
+      return;
     }
     case "version": {
       const info = getRuntimeInfo();

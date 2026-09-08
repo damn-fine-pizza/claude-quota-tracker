@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, type McpHttpConfig } from "./config.js";
 import { createMcpServer } from "./mcp/server.js";
 import { isLoopbackHost } from "./platform.js";
 import { PACKAGE_VERSION, PRODUCT_NAME } from "./version.js";
@@ -57,10 +57,16 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-export async function startMcpHttpServer(): Promise<void> {
-  const config = loadConfig();
-  const { host, port, enabled } = config.mcp.http;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+export interface McpHttpHandle {
+  url: string;
+  port: number;
+  close: () => Promise<void>;
+}
+
+/** `overrides` lets tests bind an ephemeral port (0) instead of the configured one. */
+export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {}): Promise<McpHttpHandle> {
+  const { host, port, enabled } = { ...loadConfig().mcp.http, ...overrides };
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`invalid mcp.http.port: ${port}`);
   }
   if (!enabled) {
@@ -130,11 +136,19 @@ export async function startMcpHttpServer(): Promise<void> {
     await transport.handleRequest(req, res, parsedBody);
   });
 
-  await new Promise<void>((resolve, reject) => {
+  const actualPort = await new Promise<number>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, host, resolve);
+    server.listen(port, host, () => {
+      const addr = server.address();
+      resolve(typeof addr === "object" && addr ? addr.port : port);
+    });
   });
-  console.log(`[mcp-http] listening on http://${host}:${port}/mcp (health: http://${host}:${port}/health)`);
+  console.log(`[mcp-http] listening on http://${host}:${actualPort}/mcp (health: http://${host}:${actualPort}/health)`);
+  return {
+    url: `http://${host}:${actualPort}`,
+    port: actualPort,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
