@@ -80,7 +80,7 @@ Open Dashboard
 
 > Dashboard and CLI output are in English. The only intentional non-English
 > text left in the repo is the Korean trigger-phrase examples in the Claude
-> Code plugin skill (`claude-plugin/skills/quota-tracker/SKILL.md`), which
+> Code plugin skill (`claude-plugin/skills/claude-quota-tracker/SKILL.md`), which
 > exist so the skill also activates on requests typed in Korean.
 
 ---
@@ -182,7 +182,7 @@ This repo is also a Claude Code marketplace (`.claude-plugin/marketplace.json`):
 
 ```text
 /plugin marketplace add damn-fine-pizza/claude-quota-tracker
-/plugin install quota-tracker@quota-tracker-marketplace
+/plugin install claude-quota-tracker@claude-quota-tracker-marketplace
 ```
 
 It installs a **skill** (so Claude can read your usage and defer heavy work via

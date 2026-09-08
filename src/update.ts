@@ -36,7 +36,7 @@ export function resolveSourceRepo(cwd: string = process.cwd()): string | null {
   try {
     if (existsSync(join(cwd, ".git"))) {
       const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as { name?: string };
-      if (pkg.name === "quota-tracker") return cwd;
+      if (pkg.name === "claude-quota-tracker") return cwd;
     }
   } catch {
     // cwd doesn't look like this repo

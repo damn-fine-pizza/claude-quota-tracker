@@ -51,7 +51,7 @@ export async function main(argv: string[]): Promise<void> {
     case "poll": {
       const latest = await pollOnce();
       const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
-      console.log(`[quota-tracker] polled ${n} window readings`);
+      console.log(`[claude-quota-tracker] polled ${n} window readings`);
       return;
     }
     case "daemon":
@@ -119,7 +119,7 @@ export async function main(argv: string[]): Promise<void> {
       const store = new Store(DB_PATH);
       try {
         const r = ingestUsage(store, Date.now());
-        console.log(`[quota-tracker] ingest: ${r.inserted} new events from ${r.scanned}/${r.files} files`);
+        console.log(`[claude-quota-tracker] ingest: ${r.inserted} new events from ${r.scanned}/${r.files} files`);
       } finally { store.close(); }
       return;
     }
@@ -131,4 +131,4 @@ export async function main(argv: string[]): Promise<void> {
   }
 }
 
-main(process.argv.slice(2)).catch((e) => { console.error("[quota-tracker] fatal:", e); process.exitCode = 1; });
+main(process.argv.slice(2)).catch((e) => { console.error("[claude-quota-tracker] fatal:", e); process.exitCode = 1; });

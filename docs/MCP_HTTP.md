@@ -35,7 +35,7 @@ Verified against the current Claude Code MCP docs (`code.claude.com/docs/en/mcp`
 ```json
 {
   "mcpServers": {
-    "quota-tracker-http": {
+    "claude-quota-tracker-http": {
       "type": "http",
       "url": "http://127.0.0.1:47601/mcp"
     }
@@ -43,10 +43,10 @@ Verified against the current Claude Code MCP docs (`code.claude.com/docs/en/mcp`
 }
 ```
 
-or via the CLI:
+or via the CLI, once, at user scope so it's available in every project:
 
 ```bash
-claude mcp add --transport http quota-tracker-http http://127.0.0.1:47601/mcp
+claude mcp add --transport http claude-quota-tracker-http --scope user http://127.0.0.1:47601/mcp
 ```
 
 This is a separate `mcpServers` entry from the stdio one — you can keep both
