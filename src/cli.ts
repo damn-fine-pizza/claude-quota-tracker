@@ -9,6 +9,7 @@ import { pollOnce } from "./poller.js";
 import { printHint, printStatus, printTasks } from "./report.js";
 import { runPacedOnce } from "./paced-executor.js";
 import { startMcpServer } from "./mcp-server.js";
+import { getRuntimeInfo } from "./version.js";
 
 const HELP = `quota — Claude quota tracker & quota-aware task orchestrator
 
@@ -22,6 +23,10 @@ Usage:
   quota executor --task N  run task N manually (hard quota guards preserved)
   quota enqueue            interactive task registration
   quota mcp                start MCP stdio server
+  quota mcp-http           start MCP Streamable HTTP server (127.0.0.1:47601/mcp)
+  quota version [--json]   runtime/version info
+  quota doctor [--json]    diagnose install, MCP, scheduler, platform integration
+  quota update [--check]   update the installed runtime from a git checkout
   quota status [--json]    current usage/forecast/KPI
   quota tasks [--json]     task queue state
   quota hint [--threshold N]
@@ -64,6 +69,39 @@ export async function main(argv: string[]): Promise<void> {
       const ok = await runPacedOnce(); process.exitCode = ok ? 0 : 1; return;
     }
     case "mcp": return startMcpServer();
+    case "mcp-http": {
+      const { startMcpHttpServer } = await import("./mcp-http.js");
+      return startMcpHttpServer();
+    }
+    case "version": {
+      const info = getRuntimeInfo();
+      if (argv.includes("--json")) { console.log(JSON.stringify(info, null, 2)); return; }
+      console.log(`${info.name} ${info.version}`);
+      console.log(`Node ${info.node}`);
+      console.log(`Platform ${info.platform} ${info.arch}`);
+      console.log("MCP stdio: supported");
+      console.log("MCP HTTP: supported");
+      return;
+    }
+    case "doctor": {
+      const { formatDoctorReport, runDoctorChecks } = await import("./doctor.js");
+      const report = await runDoctorChecks();
+      console.log(argv.includes("--json") ? JSON.stringify(report, null, 2) : formatDoctorReport(report));
+      process.exitCode = report.ok ? 0 : 1;
+      return;
+    }
+    case "update": {
+      const { checkForUpdate, runUpdate } = await import("./update.js");
+      if (argv.includes("--check")) {
+        const result = await checkForUpdate();
+        console.log(result.message);
+        return;
+      }
+      const result = await runUpdate();
+      console.log(result.message);
+      process.exitCode = result.ok ? 0 : 1;
+      return;
+    }
     case "install": return install();
     case "uninstall": return uninstall();
     case "enqueue": return enqueue(argv.slice(1));
