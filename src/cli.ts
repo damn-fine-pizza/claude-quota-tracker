@@ -55,8 +55,8 @@ export async function main(argv: string[]): Promise<void> {
     case "executor": {
       const taskFlag = argv.indexOf("--task");
       if (taskFlag !== -1) {
-        const ok = await runManualTask(Number(argv[taskFlag + 1]));
-        process.exitCode = ok ? 0 : 1;
+        const result = await runManualTask(Number(argv[taskFlag + 1]));
+        process.exitCode = result.ok ? 0 : 1;
       } else await runNightLoop();
       return;
     }
