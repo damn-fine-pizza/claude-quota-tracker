@@ -42,7 +42,7 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
       try {
         readings = await provider.fetch();
       } catch (e) {
-        console.error(`[quota-tracker] ${provider.id} fetch failed:`, e);
+        console.error(`[claude-quota-tracker] ${provider.id} fetch failed:`, e);
         continue;
       }
       anySuccess = true;
@@ -91,18 +91,18 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
     const ingestStore = new Store(DB_PATH);
     try {
       const r = ingestUsage(ingestStore, nowMs);
-      if (r.inserted > 0) console.log(`[quota-tracker] ingested ${r.inserted} usage events`);
+      if (r.inserted > 0) console.log(`[claude-quota-tracker] ingested ${r.inserted} usage events`);
     } finally {
       ingestStore.close();
     }
   } catch (e) {
-    console.error("[quota-tracker] usage ingest hook failed:", e);
+    console.error("[claude-quota-tracker] usage ingest hook failed:", e);
   }
 
   try {
     maybeSpawnExecutor(latest, config);
   } catch (e) {
-    console.error("[quota-tracker] executor spawn hook failed:", e);
+    console.error("[claude-quota-tracker] executor spawn hook failed:", e);
   }
 
   return latest;
@@ -117,9 +117,9 @@ function spawnDetached(subcommand: "executor" | "paced-executor", logName: strin
     detached: true,
     stdio: ["ignore", log, log],
   });
-  child.on("error", (e) => console.error(`[quota-tracker] ${subcommand} spawn failed:`, e));
+  child.on("error", (e) => console.error(`[claude-quota-tracker] ${subcommand} spawn failed:`, e));
   child.unref();
-  console.log(`[quota-tracker] spawned ${subcommand} (pid ${child.pid})`);
+  console.log(`[claude-quota-tracker] spawned ${subcommand} (pid ${child.pid})`);
 }
 
 /**
@@ -188,10 +188,10 @@ if (isMain) {
   pollOnce()
     .then((latest) => {
       const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
-      console.log(`[quota-tracker] polled ${n} window readings`);
+      console.log(`[claude-quota-tracker] polled ${n} window readings`);
     })
     .catch((e) => {
-      console.error("[quota-tracker] poll failed:", e);
+      console.error("[claude-quota-tracker] poll failed:", e);
       process.exitCode = 1;
     });
 }

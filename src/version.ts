@@ -2,7 +2,7 @@ import { PACKAGE_VERSION } from "./generated/version.js";
 
 export { PACKAGE_VERSION };
 
-/** Fixed product/server name, independent of package.json's npm package name ("quota-tracker"). */
+/** Fixed product/server name — kept as its own constant (not read from package.json) since it's the MCP/health-endpoint identity contract, independent of npm packaging concerns. */
 export const PRODUCT_NAME = "claude-quota-tracker";
 
 export interface RuntimeInfo {

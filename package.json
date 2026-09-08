@@ -1,5 +1,5 @@
 {
-  "name": "quota-tracker",
+  "name": "claude-quota-tracker",
   "version": "0.3.0",
   "type": "module",
   "description": "Track Claude usage, forecast burn rate, and schedule Claude Code work against 5-hour and weekly quota budgets.",

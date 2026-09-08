@@ -21,7 +21,7 @@ function fakeRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), "qt-update-repo-"));
   dirs.push(dir);
   mkdirSync(join(dir, ".git"));
-  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "quota-tracker" }));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "claude-quota-tracker" }));
   return dir;
 }
 afterEach(() => {

@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_CONFIG, saveConfigPatch } from "./config.js";
 import { normalizePlatform } from "./platform.js";
 
-const LABEL = "com.quota-tracker.poller";
-const LEGACY_LABEL = "com.jaejun.quota-tracker.poller";
+const LABEL = "com.claude-quota-tracker.poller";
+const LEGACY_LABELS = ["com.quota-tracker.poller", "com.jaejun.quota-tracker.poller"];
 export const APP_HOME = process.env.QUOTA_TRACKER_HOME ?? join(homedir(), ".quota-tracker");
 const APP_DATA = join(APP_HOME, "data");
 const APP_CONFIG = join(APP_HOME, "config.json");
@@ -19,8 +19,10 @@ const LIB_DIST = join(LIB_DIR, "dist");
 export const LAUNCHER = join(homedir(), ".local", "bin", "claude-quota");
 const OLD_LAUNCHER = join(homedir(), ".local", "bin", "quota");
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
-const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "quota-tracker.service");
-const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "quota-tracker.timer");
+const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "claude-quota-tracker.service");
+const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "claude-quota-tracker.timer");
+const LEGACY_SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "quota-tracker.service");
+const LEGACY_SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "quota-tracker.timer");
 
 function plistPath(label: string = LABEL): string { return join(homedir(), "Library", "LaunchAgents", `${label}.plist`); }
 function run(bin: string, args: string[], opts: { allowFail?: boolean; cwd?: string } = {}): string {
@@ -101,7 +103,7 @@ function installLaunchd(nodePath: string): void {
   mkdirSync(dirname(plistPath()), { recursive: true });
   const env = `${join(homedir(), ".local", "bin")}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
   writeFileSync(plistPath(), `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>${LABEL}</string>\n<key>ProgramArguments</key><array><string>${nodePath}</string><string>${join(LIB_DIST, "cli.js")}</string><string>poll</string></array>\n<key>EnvironmentVariables</key><dict><key>PATH</key><string>${env}</string><key>QUOTA_TRACKER_HOME</key><string>${APP_HOME}</string></dict>\n<key>StartInterval</key><integer>300</integer><key>RunAtLoad</key><true/>\n<key>StandardOutPath</key><string>${join(APP_DATA, "poller.log")}</string><key>StandardErrorPath</key><string>${join(APP_DATA, "poller.err.log")}</string>\n</dict></plist>\n`);
-  const uid = process.getuid!(); removeAgent(LEGACY_LABEL); run("launchctl", ["bootout", `gui/${uid}/${LABEL}`], { allowFail: true }); run("launchctl", ["bootstrap", `gui/${uid}`, plistPath()]);
+  const uid = process.getuid!(); for (const l of LEGACY_LABELS) removeAgent(l); run("launchctl", ["bootout", `gui/${uid}/${LABEL}`], { allowFail: true }); run("launchctl", ["bootstrap", `gui/${uid}`, plistPath()]);
   console.log("✓ launchd poller installed");
 }
 export function systemdUsable(): boolean {
@@ -109,17 +111,31 @@ export function systemdUsable(): boolean {
 }
 function installSystemd(): boolean {
   if (!systemdUsable()) return false;
+  removeLegacySystemdUnits();
   mkdirSync(SYSTEMD_USER_DIR, { recursive: true });
   writeFileSync(SYSTEMD_SERVICE, `[Unit]\nDescription=Claude quota tracker poll\n\n[Service]\nType=oneshot\nEnvironment=QUOTA_TRACKER_HOME=${APP_HOME}\nExecStart=${LAUNCHER} poll\n`);
-  writeFileSync(SYSTEMD_TIMER, `[Unit]\nDescription=Poll Claude quota every 5 minutes\n\n[Timer]\nOnBootSec=1min\nOnUnitActiveSec=5min\nPersistent=true\nUnit=quota-tracker.service\n\n[Install]\nWantedBy=timers.target\n`);
-  run("systemctl", ["--user", "daemon-reload"]); run("systemctl", ["--user", "enable", "--now", "quota-tracker.timer"]);
+  writeFileSync(SYSTEMD_TIMER, `[Unit]\nDescription=Poll Claude quota every 5 minutes\n\n[Timer]\nOnBootSec=1min\nOnUnitActiveSec=5min\nPersistent=true\nUnit=claude-quota-tracker.service\n\n[Install]\nWantedBy=timers.target\n`);
+  run("systemctl", ["--user", "daemon-reload"]); run("systemctl", ["--user", "enable", "--now", "claude-quota-tracker.timer"]);
   console.log("✓ systemd --user timer installed"); return true;
+}
+function removeLegacySystemdUnits(): void {
+  // Unit names were renamed quota-tracker -> claude-quota-tracker; clean up
+  // the old ones so an upgrade doesn't leave a second, orphaned timer.
+  if (!existsSync(LEGACY_SYSTEMD_SERVICE) && !existsSync(LEGACY_SYSTEMD_TIMER)) return;
+  run("systemctl", ["--user", "disable", "--now", "quota-tracker.timer"], { allowFail: true });
+  rmSync(LEGACY_SYSTEMD_SERVICE, { force: true });
+  rmSync(LEGACY_SYSTEMD_TIMER, { force: true });
+  run("systemctl", ["--user", "daemon-reload"], { allowFail: true });
+  console.log("✓ removed legacy quota-tracker.timer/.service (renamed to claude-quota-tracker)");
 }
 function uninstallSystemd(): void {
   if (commandWorks("systemctl", ["--user", "show-environment"])) {
-    run("systemctl", ["--user", "disable", "--now", "quota-tracker.timer"], { allowFail: true }); run("systemctl", ["--user", "daemon-reload"], { allowFail: true });
+    run("systemctl", ["--user", "disable", "--now", "claude-quota-tracker.timer"], { allowFail: true });
+    run("systemctl", ["--user", "disable", "--now", "quota-tracker.timer"], { allowFail: true });
+    run("systemctl", ["--user", "daemon-reload"], { allowFail: true });
   }
   rmSync(SYSTEMD_SERVICE, { force: true }); rmSync(SYSTEMD_TIMER, { force: true });
+  rmSync(LEGACY_SYSTEMD_SERVICE, { force: true }); rmSync(LEGACY_SYSTEMD_TIMER, { force: true });
 }
 function installSwiftBar(): void {
   const pluginDir = APP_PLUGINS; mkdirSync(pluginDir, { recursive: true }); const plugin = join(pluginDir, "usage.1m.sh");
@@ -148,7 +164,7 @@ export async function install(deps: { npmBin?: string; srcDist?: string } = {}):
 
 export async function uninstall(): Promise<void> {
   const platform = normalizePlatform();
-  if (platform === "darwin") { removeAgent(LABEL); removeAgent(LEGACY_LABEL); }
+  if (platform === "darwin") { removeAgent(LABEL); for (const l of LEGACY_LABELS) removeAgent(l); }
   if (platform === "linux") uninstallSystemd();
   console.log(`Data preserved: ${APP_HOME}`);
   console.log(`Remove runtime manually: rm ${LAUNCHER}; rm -rf ${join(APP_HOME, "lib")}`);

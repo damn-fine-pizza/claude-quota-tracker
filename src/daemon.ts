@@ -18,7 +18,7 @@ function sleep(ms: number): Promise<void> {
  */
 export async function runDaemon(opts: { signal?: AbortSignal } = {}): Promise<void> {
   if (!acquireLock(LOCK_PATH)) {
-    console.error("[quota-tracker] another daemon instance holds the lock; exiting");
+    console.error("[claude-quota-tracker] another daemon instance holds the lock; exiting");
     process.exitCode = 1;
     return;
   }
@@ -28,20 +28,20 @@ export async function runDaemon(opts: { signal?: AbortSignal } = {}): Promise<vo
   process.on("SIGTERM", stop);
   opts.signal?.addEventListener("abort", stop);
 
-  console.log(`[quota-tracker] portable daemon started (pid ${process.pid})`);
+  console.log(`[claude-quota-tracker] portable daemon started (pid ${process.pid})`);
   try {
     while (!stopping) {
       const started = Date.now();
       try {
         await pollOnce(started);
       } catch (e) {
-        console.error("[quota-tracker] daemon poll failed:", e);
+        console.error("[claude-quota-tracker] daemon poll failed:", e);
       }
       const intervalMs = Math.max(10, loadConfig().pollIntervalSeconds) * 1000;
       const remaining = Math.max(0, intervalMs - (Date.now() - started));
       if (!stopping) await sleep(remaining);
     }
-    console.log("[quota-tracker] portable daemon stopped");
+    console.log("[claude-quota-tracker] portable daemon stopped");
   } finally {
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);

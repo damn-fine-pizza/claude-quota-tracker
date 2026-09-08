@@ -6,8 +6,8 @@
 
 `claude-quota install` installs the launcher/runtime and, when `systemctl --user` is usable, creates and enables:
 
-- `~/.config/systemd/user/quota-tracker.service`
-- `~/.config/systemd/user/quota-tracker.timer`
+- `~/.config/systemd/user/claude-quota-tracker.service`
+- `~/.config/systemd/user/claude-quota-tracker.timer`
 
 The timer runs `claude-quota poll` every five minutes.
 
