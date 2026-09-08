@@ -180,9 +180,14 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     "update_task",
     {
-      description: "Change priority, intent, deadline, or continuous eligibility of an already-queued task. Only the provided fields are changed.",
+      description: "Change a not-yet-started task: its prompt/cwd/size/permission content, and/or its priority, intent, deadline, or continuous eligibility. Only the provided fields are changed.",
       inputSchema: {
         task_id: z.number(),
+        prompt: z.string().optional(),
+        cwd: z.string().optional(),
+        size: z.enum(["xs", "s", "m", "l", "xl"]).optional(),
+        permission: z.enum(["read-only", "write-scoped", "destructive"]).optional()
+          .describe("Re-triages permission_mode/unattendedOk to match; may also clear continuous eligibility (see continuousOk in the response)."),
         priority: z.number().optional(),
         intent: z.enum(["interactive", "deadline", "opportunistic"]).optional(),
         deadline: z.union([z.string(), z.number(), z.null()]).optional(),
@@ -190,16 +195,34 @@ export function registerTools(server: McpServer): void {
           .describe("Explicitly opt this task into unattended execution outside the confirmed night window."),
       },
     },
-    async ({ task_id, priority, intent, deadline, continuous }) => withTask(task_id, (store, meta) => {
-      if (priority === undefined && intent === undefined && deadline === undefined && continuous === undefined) {
-        throw new Error("provide at least one of priority, intent, deadline, continuous");
+    async ({ task_id, prompt, cwd, size, permission, priority, intent, deadline, continuous }) => withTask(task_id, (store, meta) => {
+      if (
+        prompt === undefined && cwd === undefined && size === undefined && permission === undefined &&
+        priority === undefined && intent === undefined && deadline === undefined && continuous === undefined
+      ) {
+        throw new Error("provide at least one of prompt, cwd, size, permission, priority, intent, deadline, continuous");
       }
       let task = store.getTask(task_id)!;
+      if (prompt !== undefined || cwd !== undefined || size !== undefined || permission !== undefined) {
+        if (task.status !== "queued" && task.status !== "carried_over") {
+          throw new Error(`task #${task_id} is ${task.status} — only queued/carried_over tasks can have their content edited`);
+        }
+        const rule = permission !== undefined ? TRIAGE[permission] : null;
+        const updated = store.updateTaskContent(task_id, Date.now(), {
+          prompt, cwd, size,
+          ...(rule ? { permissionClass: permission, permissionMode: rule.permissionMode, unattendedOk: rule.unattendedOk } : {}),
+        });
+        if (!updated) throw new Error(`task #${task_id} could not be updated`);
+        task = updated;
+      }
       if (priority !== undefined) {
         task = store.updateTaskPriority(task_id, priority, Date.now()) ?? task;
       }
       let scheduling = meta.getOrDefault(task_id);
-      if (intent !== undefined || deadline !== undefined || continuous !== undefined) {
+      // Also re-run this when only `permission` changed: it may have flipped
+      // unattendedOk (e.g. to destructive), which must zero out continuousOk
+      // even though continuous/intent/deadline themselves weren't touched.
+      if (intent !== undefined || deadline !== undefined || continuous !== undefined || permission !== undefined) {
         const nextIntent = intent ?? scheduling.intent;
         const nextDeadline = deadline === undefined ? scheduling.deadlineMs : deadlineMs(deadline);
         if (nextIntent === "deadline" && nextDeadline == null) throw new Error("deadline intent requires deadline");
@@ -213,6 +236,23 @@ export function registerTools(server: McpServer): void {
         });
       }
       return text({ task, scheduling });
+    }),
+  );
+
+  server.registerTool(
+    "delete_task",
+    {
+      description: "Permanently remove a task (and its run history) from the queue. Refuses to delete a currently-running task.",
+      inputSchema: { task_id: z.number() },
+    },
+    async ({ task_id }) => withTask(task_id, (store, meta) => {
+      const task = store.getTask(task_id)!;
+      if (task.status === "running") {
+        throw new Error(`task #${task_id} is running — wait for it to finish before deleting`);
+      }
+      meta.delete(task_id);
+      const deleted = store.deleteTask(task_id);
+      return text({ deleted, taskId: task_id });
     }),
   );
 }

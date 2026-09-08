@@ -231,6 +231,58 @@ export class Store {
     return row ? this.rowToTask(row) : null;
   }
 
+  /**
+   * Edits a not-yet-started task's content. Refuses running/done/failed tasks
+   * — those have already executed (or are executing) against the old content,
+   * so rewriting it out from under them would be misleading at best. Only the
+   * provided fields change.
+   */
+  updateTaskContent(id: number, ts: number, patch: {
+    prompt?: string;
+    cwd?: string;
+    size?: TaskSize;
+    permissionClass?: Task["permissionClass"];
+    permissionMode?: string;
+    unattendedOk?: boolean;
+  }): Task | null {
+    const current = this.getTask(id);
+    if (!current || (current.status !== "queued" && current.status !== "carried_over")) return null;
+    // Explicit per-field fallback, not `{ ...current, ...patch }`: callers
+    // (e.g. the MCP tool) build `patch` via object-shorthand from optional
+    // args, so an omitted field is `undefined` as an OWN property — a naive
+    // spread would overwrite `current`'s real value with `undefined` and
+    // then fail to bind it as a SQL parameter.
+    const next = {
+      prompt: patch.prompt ?? current.prompt,
+      cwd: patch.cwd ?? current.cwd,
+      size: patch.size ?? current.size,
+      permissionClass: patch.permissionClass ?? current.permissionClass,
+      permissionMode: patch.permissionMode ?? current.permissionMode,
+      unattendedOk: patch.unattendedOk ?? current.unattendedOk,
+    };
+    const row = this.db
+      .prepare(
+        `UPDATE tasks SET
+           prompt = ?, cwd = ?, size = ?, permission_class = ?, permission_mode = ?,
+           unattended_ok = ?, updated_ts = ?
+         WHERE id = ? RETURNING *`,
+      )
+      .get(
+        next.prompt, next.cwd, next.size, next.permissionClass, next.permissionMode,
+        next.unattendedOk ? 1 : 0, ts, id,
+      ) as Record<string, unknown> | undefined;
+    return row ? this.rowToTask(row) : null;
+  }
+
+  /** Refuses to delete a running task — its worktree/headless process may still reference the row. Everything else can go. */
+  deleteTask(id: number): boolean {
+    const task = this.getTask(id);
+    if (!task || task.status === "running") return false;
+    this.db.prepare("DELETE FROM task_runs WHERE task_id = ?").run(id);
+    this.db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
+    return true;
+  }
+
   listTasks(statuses?: TaskStatus[]): Task[] {
     const rows = (
       statuses && statuses.length > 0

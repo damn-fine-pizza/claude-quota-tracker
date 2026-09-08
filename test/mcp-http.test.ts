@@ -73,7 +73,7 @@ describe("mcp-http", () => {
     const listBody = (await readRpcJson(list)) as { result: { tools: Array<{ name: string }> } };
     const names = listBody.result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "get_pacing_status", "get_quota_status", "list_tasks",
+      "delete_task", "get_pacing_status", "get_quota_status", "list_tasks",
       "pause_task", "resume_task", "run_now", "set_pacing_config", "submit_task", "update_task",
     ]);
 
@@ -121,6 +121,62 @@ describe("mcp-http", () => {
     const updateBody = (await readRpcJson(update)) as { result: { content: Array<{ text: string }> } };
     const payload = JSON.parse(updateBody.result.content[0].text);
     expect(payload.scheduling.continuousOk).toBe(false);
+  });
+
+  it("update_task edits prompt/cwd/size, and separately re-triages permission (safely dropping continuousOk)", async () => {
+    const submit = await rpc(server.url, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "submit_task", arguments: { prompt: "old", cwd: "/old", permission: "write-scoped", continuous: true } },
+    });
+    const submitBody = (await readRpcJson(submit)) as { result: { content: Array<{ text: string }> } };
+    const submitted = JSON.parse(submitBody.result.content[0].text);
+    const taskId = submitted.task.id as number;
+    expect(submitted.scheduling.continuousOk).toBe(true);
+
+    const content = await rpc(server.url, {
+      jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "update_task", arguments: { task_id: taskId, prompt: "new", cwd: "/new", size: "l" } },
+    });
+    const contentBody = (await readRpcJson(content)) as { result: { content: Array<{ text: string }> } };
+    const afterContent = JSON.parse(contentBody.result.content[0].text);
+    expect(afterContent.task.prompt).toBe("new");
+    expect(afterContent.task.cwd).toBe("/new");
+    expect(afterContent.task.size).toBe("l");
+    expect(afterContent.scheduling.continuousOk).toBe(true); // permission untouched -> unaffected
+
+    const rePermission = await rpc(server.url, {
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "update_task", arguments: { task_id: taskId, permission: "destructive" } },
+    });
+    const rePermissionBody = (await readRpcJson(rePermission)) as { result: { content: Array<{ text: string }> } };
+    const afterPermission = JSON.parse(rePermissionBody.result.content[0].text);
+    expect(afterPermission.task.permissionClass).toBe("destructive");
+    // continuous wasn't passed this time either, but permission alone must still re-check eligibility.
+    expect(afterPermission.scheduling.continuousOk).toBe(false);
+  });
+
+  it("delete_task removes a task from the queue", async () => {
+    const submit = await rpc(server.url, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "submit_task", arguments: { prompt: "p", cwd: "/tmp" } },
+    });
+    const submitBody = (await readRpcJson(submit)) as { result: { content: Array<{ text: string }> } };
+    const taskId = JSON.parse(submitBody.result.content[0].text).task.id as number;
+
+    const del = await rpc(server.url, {
+      jsonrpc: "2.0", id: 2, method: "tools/call",
+      params: { name: "delete_task", arguments: { task_id: taskId } },
+    });
+    const delBody = (await readRpcJson(del)) as { result: { content: Array<{ text: string }> } };
+    expect(JSON.parse(delBody.result.content[0].text)).toEqual({ deleted: true, taskId });
+
+    const list = await rpc(server.url, {
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "list_tasks", arguments: {} },
+    });
+    const listBody = (await readRpcJson(list)) as { result: { content: Array<{ text: string }> } };
+    const tasks = JSON.parse(listBody.result.content[0].text) as Array<{ task: { id: number } }>;
+    expect(tasks.some((t) => t.task.id === taskId)).toBe(false);
   });
 
   it("set_pacing_config patches only the given fields and get_pacing_status reflects it", async () => {

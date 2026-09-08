@@ -106,7 +106,11 @@ Temporarily remove/restore a task from automatic admission without changing the 
 
 ### `update_task`
 
-Changes `priority`, `intent`, `deadline`, and/or `continuous` on an already-queued task — for when priorities change after a task has been sitting in the queue for a few days. Only the provided fields change. Never lets a `destructive` task become continuous-eligible, regardless of what's requested (same rule `submit_task` enforces).
+Changes `prompt`, `cwd`, `size`, `permission`, `priority`, `intent`, `deadline`, and/or `continuous` on a task — for when a task's content needs correcting, or its priorities change after it's been sitting in the queue for a few days. Only the provided fields change. `prompt`/`cwd`/`size`/`permission` can only be edited on a `queued` or `carried_over` task (not `running`/`done`/`failed` — those already executed, or are executing, against the old content). Changing `permission` re-triages `permission_mode`/`unattendedOk` the same way `submit_task` does, and re-checks `continuousOk` even if `continuous` itself wasn't passed — so, e.g., re-triaging a task to `destructive` always drops continuous eligibility. Never lets a `destructive` task become continuous-eligible, regardless of what's requested (same rule `submit_task` enforces).
+
+### `delete_task`
+
+Permanently removes a task (and its run history) from the queue. Refuses to delete a currently-`running` task — wait for it to finish first. There is no undo; `pause_task` is the reversible alternative when you just want to stop a task from being picked up.
 
 ### `run_now`
 
