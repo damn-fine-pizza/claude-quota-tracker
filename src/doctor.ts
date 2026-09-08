@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { CLAUDE_PROJECTS_DIR, CONFIG_PATH, DB_PATH, loadConfig, PROJECT_ROOT } from "./config.js";
+import { CLAUDE_PROJECTS_DIR, CONFIG_PATH, DATA_DIR, DB_PATH, loadConfig, PROJECT_ROOT } from "./config.js";
 import { APP_HOME, commandWorks, LAUNCHER, systemdUsable } from "./install.js";
 import { createMcpServer } from "./mcp/server.js";
 import { detectContainerEnvironment, isLoopbackHost, normalizePlatform } from "./platform.js";
@@ -63,6 +63,7 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   }
 
   try {
+    mkdirSync(DATA_DIR, { recursive: true });
     const store = new Store(DB_PATH);
     store.close();
     push("runtime", "sqlite db", "ok", DB_PATH);
