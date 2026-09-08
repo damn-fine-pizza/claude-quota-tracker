@@ -24,8 +24,8 @@ function warnIfNotGitWorktree(cls: PermissionClass, cwd: string): void {
     });
   } catch {
     console.warn(
-      `⚠ 경고: write-scoped 태스크의 작업 디렉토리가 git 저장소가 아닙니다 (${cwd}).\n` +
-      `  실행 시 git worktree 격리가 실패합니다. git 저장소 경로를 --cwd로 지정하세요.`,
+      `⚠ warning: the working directory for this write-scoped task is not a git repository (${cwd}).\n` +
+      `  git worktree isolation will fail at execution time. Pass a git repository path via --cwd.`,
     );
   }
 }
@@ -75,7 +75,7 @@ export async function enqueueInteractive(): Promise<void> {
   try {
     const config = loadConfig();
 
-    console.log("프롬프트 (빈 줄로 종료):");
+    console.log("Prompt (end with a blank line):");
     const lines: string[] = [];
     for (;;) {
       const line = await rl.question("> ");
@@ -84,30 +84,30 @@ export async function enqueueInteractive(): Promise<void> {
     }
     const prompt = lines.join("\n").trim();
     if (!prompt) {
-      console.error("프롬프트가 비어 있어 등록을 취소합니다.");
+      console.error("Prompt is empty — cancelling enqueue.");
       return;
     }
 
-    const cwd = await ask(`작업 디렉토리 [${process.cwd()}]: `, process.cwd());
+    const cwd = await ask(`Working directory [${process.cwd()}]: `, process.cwd());
 
     let size: TaskSize;
     for (;;) {
-      const s = (await ask("사이즈 (xs/s/m/l/xl): ")) as TaskSize;
+      const s = (await ask("Size (xs/s/m/l/xl): ")) as TaskSize;
       if (SIZES.includes(s)) { size = s; break; }
       if (rl.isClosed()) throw new Error("stdin closed before a valid size was given");
-      console.log("xs/s/m/l/xl 중 하나를 입력하세요.");
+      console.log("Enter one of xs/s/m/l/xl.");
     }
     const est = SIZE_ESTIMATES[size];
-    console.log(`  → 예상 ~${Math.round(est.tokens / 1000)}K tokens / ~${est.minutes}분`);
+    console.log(`  → estimated ~${Math.round(est.tokens / 1000)}K tokens / ~${est.minutes} min`);
 
-    const priority = Number(await ask("우선순위 (높을수록 먼저) [0]: ", "0")) || 0;
-    const deferOk = (await ask("야간으로 연기 가능? (Y/n): ", "y")).toLowerCase() !== "n";
+    const priority = Number(await ask("Priority (higher runs first) [0]: ", "0")) || 0;
+    const deferOk = (await ask("Can this defer to the night window? (Y/n): ", "y")).toLowerCase() !== "n";
 
-    console.log("\n권한 triage — 이 태스크가 하는 일에 가장 가까운 것은?");
+    console.log("\nPermission triage — which of these is closest to what this task does?");
     CLASSES.forEach((c, i) => console.log(`  ${i + 1}) ${c.padEnd(13)} ${TRIAGE[c].summary}`));
     let cls: PermissionClass;
     for (;;) {
-      const n = Number(await ask("선택 [1-3]: "));
+      const n = Number(await ask("Choice [1-3]: "));
       if (Number.isInteger(n) && n >= 1 && n <= 3) { cls = CLASSES[n - 1]; break; }
       if (rl.isClosed()) throw new Error("stdin closed before a valid triage choice was given");
     }
@@ -116,9 +116,9 @@ export async function enqueueInteractive(): Promise<void> {
 
     console.log(`\n${confirmPhrase(cls, config.nightWindow)}`);
     if (rule.unattendedOk) {
-      const yes = (await ask("동의합니까? (y/N): ")).toLowerCase() === "y";
+      const yes = (await ask("Do you agree? (y/N): ")).toLowerCase() === "y";
       if (!yes) {
-        console.log("동의하지 않아 등록을 취소합니다.");
+        console.log("Not agreed — cancelling enqueue.");
         return;
       }
     }
@@ -134,18 +134,18 @@ export async function enqueueInteractive(): Promise<void> {
     if (needsNightConfirm) {
       if (config.nightWindow.confirmedAt) {
         console.log(
-          `\n타임존이 변경되었습니다 (${config.nightWindow.confirmedTz} → ${tz}). 재컨펌이 필요합니다.`,
+          `\nTimezone changed (${config.nightWindow.confirmedTz} → ${tz}). Re-confirmation is required.`,
         );
       }
       console.log(`\n${nightWindowConfirmPhrase(config.nightWindow, tz)}`);
-      const a = (await ask('(y=허용 / n=보류 / 직접 입력 예 "00:30-07:00"): ')).toLowerCase();
+      const a = (await ask('(y=allow / n=hold / or type a range, e.g. "00:30-07:00"): ')).toLowerCase();
       let { start, end } = config.nightWindow;
       let confirmed = false;
       const range = parseHHMMRange(a);
       if (range) { ({ start, end } = range); confirmed = true; }
       else if (a === "y") confirmed = true;
       else if (a !== "n" && a !== "") {
-        console.log('입력을 해석하지 못했습니다 ("HH:MM-HH:MM" 또는 y/n) — 보류로 처리합니다.');
+        console.log('Could not parse that input ("HH:MM-HH:MM" or y/n) — treating as hold.');
       }
       if (confirmed) {
         saveConfigPatch(
@@ -158,9 +158,9 @@ export async function enqueueInteractive(): Promise<void> {
           },
           CONFIG_PATH,
         );
-        console.log(`→ night window ${start}–${end} (${tz}) 컨펌 기록 완료`);
+        console.log(`→ night window ${start}–${end} (${tz}) confirmed and recorded`);
       } else {
-        console.log("→ 보류: 컨펌 전까지 야간 배치는 실행되지 않습니다 (태스크는 등록됨).");
+        console.log("→ Held: the night batch will not run until confirmed (the task is still enqueued).");
       }
     }
 
@@ -174,12 +174,12 @@ export async function enqueueInteractive(): Promise<void> {
         scheduledWindow,
       });
       console.log(
-        `\n✓ task #${task.id} 등록 — ${size} / ${cls} / ${rule.permissionMode} / ` +
-        `${scheduledWindow} 슬롯 / 우선순위 ${priority}`,
+        `\n✓ task #${task.id} enqueued — ${size} / ${cls} / ${rule.permissionMode} / ` +
+        `${scheduledWindow} slot / priority ${priority}`,
       );
       if (!rule.unattendedOk) {
-        console.log(`  무인 실행 불가 — 실행: npm run executor -- --task ${task.id}`);
-        console.log("  (estimation 누적을 위해 수동 실행도 동일 스케줄러 경로를 탑니다)");
+        console.log(`  cannot run unattended — run: npm run executor -- --task ${task.id}`);
+        console.log("  (manual runs still go through the same scheduler path, to accumulate estimation data)");
       }
     } finally {
       store.close();
@@ -214,9 +214,9 @@ export function enqueueFromArgs(argv: string[]): void {
   const prompt = typeof f.prompt === "string" ? f.prompt.trim() : "";
   const size = f.size as TaskSize;
   const cls = f.perm as PermissionClass;
-  if (!prompt) { console.error("--prompt <text> 필요"); process.exitCode = 1; return; }
-  if (!SIZES.includes(size)) { console.error("--size xs|s|m|l|xl 필요"); process.exitCode = 1; return; }
-  if (!CLASSES.includes(cls)) { console.error("--perm read-only|write-scoped|destructive 필요"); process.exitCode = 1; return; }
+  if (!prompt) { console.error("--prompt <text> is required"); process.exitCode = 1; return; }
+  if (!SIZES.includes(size)) { console.error("--size xs|s|m|l|xl is required"); process.exitCode = 1; return; }
+  if (!CLASSES.includes(cls)) { console.error("--perm read-only|write-scoped|destructive is required"); process.exitCode = 1; return; }
 
   const cwd = typeof f.cwd === "string" ? f.cwd : process.cwd();
   const priority = typeof f.priority === "string" ? Number(f.priority) || 0 : 0;
@@ -228,7 +228,7 @@ export function enqueueFromArgs(argv: string[]): void {
   let deferOk = false;
   if (wantNight) {
     if (!rule.unattendedOk) {
-      console.warn(`경고: ${cls}는 무인 실행 불가 — --night 무시, 'any' 슬롯(수동 실행)으로 등록`);
+      console.warn(`warning: ${cls} cannot run unattended — ignoring --night, enqueuing to the 'any' slot (manual run)`);
     } else {
       scheduledWindow = "night";
       deferOk = true;
@@ -251,7 +251,7 @@ export function enqueueFromArgs(argv: string[]): void {
       CONFIG_PATH,
     );
     console.log(
-      `→ night window ${config.nightWindow.start}–${config.nightWindow.end} (${tz}) 자동 컨펌 (--night)`,
+      `→ night window ${config.nightWindow.start}–${config.nightWindow.end} (${tz}) auto-confirmed (--night)`,
     );
   }
 
@@ -263,14 +263,14 @@ export function enqueueFromArgs(argv: string[]): void {
       unattendedOk: rule.unattendedOk, scheduledWindow,
     });
     console.log(
-      `✓ task #${task.id} 등록 — ${size} / ${cls} / ${rule.permissionMode} / ` +
-      `${scheduledWindow} 슬롯 / 우선순위 ${priority}`,
+      `✓ task #${task.id} enqueued — ${size} / ${cls} / ${rule.permissionMode} / ` +
+      `${scheduledWindow} slot / priority ${priority}`,
     );
     if (scheduledWindow === "night") {
-      console.log("  야간 윈도우의 사용량 최저 시간에 자동 실행됩니다 (데이터 누적 전엔 윈도우 시작 시각).");
+      console.log("  will run automatically at the night window's lowest-usage hour (at the window start until enough data accumulates).");
     }
     if (!rule.unattendedOk) {
-      console.log(`  무인 실행 불가 — 실행: quota executor --task ${task.id}`);
+      console.log(`  cannot run unattended — run: quota executor --task ${task.id}`);
     }
   } finally {
     store.close();
