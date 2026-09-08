@@ -25,6 +25,37 @@ a SQLite file on your machine.
 
 ---
 
+## Fork-only features
+
+This is `damn-fine-pizza/claude-quota-tracker`, a fork of
+[`cooco119/claude-quota-tracker`](https://github.com/cooco119/claude-quota-tracker).
+Everything below is **not** in upstream (currently macOS-only, 0 runtime deps,
+Korean-language UI, no MCP scheduler at all):
+
+- **Quota-aware MCP task scheduler + pacing governor** — submit/list/pause/
+  resume/update/run tools, a linear per-window pacing model, and adaptive
+  size estimation (see [`docs/MCP_SCHEDULER.md`](docs/MCP_SCHEDULER.md)).
+- **Linux support** — `systemd --user` timer, a portable no-systemd daemon,
+  and Distrobox/container detection, all first-class (see
+  [`docs/LINUX.md`](docs/LINUX.md)).
+- **MCP Streamable HTTP transport** (`claude-quota mcp-http`) alongside the
+  original stdio transport, so multiple clients can share one running server
+  (see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)).
+- **`claude-quota version` / `doctor` / `update`** — runtime tooling that
+  makes the install self-describing, diagnosable, and upgradable in place
+  (see [`docs/UPDATING.md`](docs/UPDATING.md)).
+- **`update_task` / `set_pacing_config` MCP tools** and a dashboard
+  **Settings** panel — change a queued task's priority/deadline or the
+  pacing config after the fact, from the client or the browser, without
+  re-submitting a task or hand-editing `config.json`.
+- **English-only UI** (upstream's dashboard/CLI are in Korean).
+- **Launcher renamed `claude-quota`** — upstream's `quota` collides with the
+  standard Unix disk-quota command.
+- Built on the official `@modelcontextprotocol/sdk`, not a hand-rolled
+  JSON-RPC implementation.
+
+---
+
 ## Features
 
 - **📊 Usage tracking & forecast** — polls your 5h / weekly windows every 5
@@ -45,13 +76,19 @@ a SQLite file on your machine.
   state, plus a **Settings** panel to view/edit pacing and auto-open — no
   file editing required. Self-contained inline SVG; opens with one menubar
   click, or automatically when `claude-quota mcp`/`mcp-http` starts if
-  `dashboard.autoOpen` is enabled (opt-in, off by default).
+  `dashboard.autoOpen` is enabled (opt-in, off by default). Auto-refreshes
+  every 60s (toggleable, remembered per browser) without a page reload.
 - **🧩 Claude Code plugin** — a skill + `UserPromptSubmit` hook so Claude itself
   becomes quota-aware and can offer to defer heavy work to the night queue.
 - **🔌 MCP, two ways** — `claude-quota mcp` (stdio, one process per client, unchanged)
   and `claude-quota mcp-http` (local Streamable HTTP on `127.0.0.1:47601/mcp`, one
   persistent server multiple clients can share). Same tools, same
   authorization rules either way — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md).
+  Tools cover the whole task lifecycle (submit / list / pause / resume /
+  **update** / run) plus reading and writing pacing config directly from the
+  client, so priorities and pacing can change after the fact without
+  re-submitting a task or touching a file — see
+  [`docs/MCP_SCHEDULER.md`](docs/MCP_SCHEDULER.md).
 - **🩺 Runtime tooling** — `claude-quota version`, `claude-quota doctor`, and `claude-quota update`
   make the installed runtime self-describing, diagnosable, and upgradable
   without ever touching a client's `.mcp.json`.
@@ -236,11 +273,15 @@ claude -p "/usage" ──poll(5m)──▶ window_readings ──▶ forecast �
 - `nightWindow` — `start`/`end` (local wall-clock) + a one-time confirmation
 - `executor` — `sessionGuardPct` (default 80), `nightFloorHHMM` (default
   `02:00`), per-size timeouts, `maxAttempts`
+- `pacing` — `enabled`, `slackPct`, `sessionWindowHours`, `weeklyWindowHours`,
+  `continuousEnabled`, `deadlineSafetyMinutes`, `adaptiveMinSamples` — see
+  [`docs/MCP_SCHEDULER.md`](docs/MCP_SCHEDULER.md). Editable from the
+  dashboard's Settings panel or the `set_pacing_config` MCP tool, instead of
+  by hand.
 - `dashboard` — `port` (default 47600), `idleShutdownMin`, `autoOpen`
   (default `false` — open the dashboard automatically when `claude-quota
-  mcp`/`mcp-http` starts, if it isn't already running). `pacing` and
-  `autoOpen` can both be edited from the dashboard's **Settings** panel
-  instead of by hand.
+  mcp`/`mcp-http` starts, if it isn't already running). `autoOpen` is also
+  editable from the Settings panel.
 - `ingest` — `extraRoots` (extra session-log roots for custom harnesses; `~/`
   expands to `$HOME`)
 - `mcp.http` — `enabled`, `host` (default `127.0.0.1`), `port` (default
@@ -268,7 +309,7 @@ the network.
 
 ```bash
 npm run build        # tsc → dist/
-npm test             # vitest (190 tests)
+npm test             # vitest (194 tests)
 npm run typecheck
 ```
 
