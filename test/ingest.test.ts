@@ -169,17 +169,17 @@ describe("ingestUsage", () => {
     store.close();
   });
 
-  it("handles multibyte (한글) lines without corrupting the byte offset", () => {
+  it("handles multibyte (4-byte UTF-8, e.g. emoji) lines without corrupting the byte offset", () => {
     const root = tmpRoot();
     const p = join(root, "proj", "s.jsonl");
     const l1 = JSON.stringify({
       type: "assistant", requestId: "req_1", timestamp: "2026-06-12T03:00:00.000Z",
-      message: { id: "msg_k1", model: "한글모델", usage: { input_tokens: 100, output_tokens: 0 } },
+      message: { id: "msg_mb1", model: "rocket-🚀-model", usage: { input_tokens: 100, output_tokens: 0 } },
     });
     writeFileSync(p, l1 + "\n");
     const store = new Store(":memory:");
     expect(ingestUsage(store, NOW, root).inserted).toBe(1);
-    appendFileSync(p, line("msg_k2", { input: 20, output: 0 }) + "\n");
+    appendFileSync(p, line("msg_mb2", { input: 20, output: 0 }) + "\n");
     expect(ingestUsage(store, NOW, root).inserted).toBe(1); // offset resumed correctly
     expect(totalTokens(store)).toBe(120);
     store.close();
