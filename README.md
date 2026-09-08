@@ -78,8 +78,10 @@ Week (all models): 59% → ~72% by reset Jun 13 11:00 AM
 Open Dashboard
 ```
 
-> The dashboard and CLI messages are currently in Korean. PRs for i18n are very
-> welcome.
+> Dashboard and CLI output are in English. The only intentional non-English
+> text left in the repo is the Korean trigger-phrase examples in the Claude
+> Code plugin skill (`claude-plugin/skills/quota-tracker/SKILL.md`), which
+> exist so the skill also activates on requests typed in Korean.
 
 ---
 

@@ -70,7 +70,7 @@ export function overview(store: Store, nowMs: number) {
       runs7d: k.runs,
       ingestMaxTsMs: usage.maxTsMs,
     },
-    scopeNote: "전체 Claude Code 사용량 (세션 로그 기반 · web/claude.ai 미포함)",
+    scopeNote: "total Claude Code usage (session-log based · excludes web/claude.ai)",
   };
 }
 

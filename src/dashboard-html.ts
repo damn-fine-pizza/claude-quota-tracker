@@ -36,21 +36,21 @@ function gauge(w){
 function renderOverview(ov){
   el('updated').textContent = ov.ageMin==null? 'no data' : ('updated '+ov.ageMin+'m ago');
   el('scope').textContent = ov.scopeNote || '';
-  el('gauges').innerHTML = (ov.windows&&ov.windows.length)? ov.windows.map(gauge).join('') : empty('윈도우 데이터 없음 — poller를 먼저 실행하세요');
+  el('gauges').innerHTML = (ov.windows&&ov.windows.length)? ov.windows.map(gauge).join('') : empty('no window data yet — run the poller first');
   el('kpi').innerHTML =
-    kpi('7일 토큰 (전체)', fmtN(ov.kpi.tokens7d)) +
-    kpi('7일 active 토큰', fmtN(ov.kpi.activeTokens7d)) +
-    kpi('7일 오케스트레이터 비용', fmtUsd(ov.kpi.cost7d)) +
-    kpi('7일 태스크 실행', ''+ov.kpi.runs7d);
+    kpi('7d tokens (total)', fmtN(ov.kpi.tokens7d)) +
+    kpi('7d active tokens', fmtN(ov.kpi.activeTokens7d)) +
+    kpi('7d orchestrator cost', fmtUsd(ov.kpi.cost7d)) +
+    kpi('7d task runs', ''+ov.kpi.runs7d);
   el('ingestfresh').textContent = ov.kpi.ingestMaxTsMs
-    ? '사용량 데이터 기준 ' + fmtTime(ov.kpi.ingestMaxTsMs)
+    ? 'usage data as of ' + fmtTime(ov.kpi.ingestMaxTsMs)
     : '';
 }
 function kpi(label,val){ return '<div class="kcard"><div class="klabel">'+label+'</div><div class="kval">'+val+'</div></div>'; }
 
 function renderModels(md){
   var totals = md.totals||[];
-  if(!totals.length){ el('models').innerHTML = empty('아직 사용량 데이터가 없습니다 (quota ingest 또는 poll 후 채워집니다)'); el('tokcat').innerHTML=''; return; }
+  if(!totals.length){ el('models').innerHTML = empty('no usage data yet (fills in after quota ingest or poll)'); el('tokcat').innerHTML=''; return; }
   // Bar length by ACTIVE tokens (input+output+cache-create); cache_read is huge
   // and would otherwise flatten every bar to the same length.
   var maxActive = Math.max.apply(null, totals.map(function(t){return t.activeTokens;}).concat([1]));
@@ -64,7 +64,7 @@ function renderModels(md){
   el('models').innerHTML = rows;
 
   var c = md.categories, tot = c.input+c.output+c.cacheCreation+c.cacheRead;
-  if(tot<=0){ el('tokcat').innerHTML = empty('토큰 데이터 없음'); return; }
+  if(tot<=0){ el('tokcat').innerHTML = empty('no token data'); return; }
   var segs = [['input',c.input],['output',c.output],['cacheCreation',c.cacheCreation],['cacheRead',c.cacheRead]];
   var bar = '<div class="stack">'+segs.map(function(s){
     var pc=(s[1]/tot)*100; if(pc<=0) return '';
@@ -78,7 +78,7 @@ function renderModels(md){
 
 function renderContrib(ct){
   var days = ct.days||[];
-  if(!days.length){ el('contrib').innerHTML = empty('활동 없음'); return; }
+  if(!days.length){ el('contrib').innerHTML = empty('no activity'); return; }
   var vals = days.map(function(d){return d.value;}).filter(function(v){return v>0;}).sort(function(a,b){return a-b;});
   var shades=['#21262d','#0e4429','#006d32','#26a641','#39d353'];
   function bucket(v){ if(v<=0) return 0; if(!vals.length) return 1; var q=[0.2,0.4,0.6,0.8].map(function(p){return vals[Math.floor(p*vals.length)];}); var b=1; for(var i=0;i<q.length;i++) if(v>q[i]) b=i+2; return Math.min(shades.length-1, b); }
@@ -104,7 +104,7 @@ function renderTimeseries(ts){
   var keys=[['session_5h','Session 5h'],['weekly_all','Week all'],['weekly_sonnet','Week Sonnet']];
   var out=keys.map(function(k){
     var pts=ts[k[0]]||[];
-    if(pts.length<2) return '<div class="tslane"><div class="tslabel">'+k[1]+'</div>'+empty('표본 부족')+'</div>';
+    if(pts.length<2) return '<div class="tslane"><div class="tslabel">'+k[1]+'</div>'+empty('not enough samples')+'</div>';
     var t0=pts[0].ts, t1=pts[pts.length-1].ts, span=Math.max(1,t1-t0);
     var W=300,H=60;
     var poly=pts.map(function(p){ var x=((p.ts-t0)/span)*W; var y=H-(Math.min(100,p.pct)/100)*H; return x.toFixed(1)+','+y.toFixed(1); }).join(' ');
@@ -118,19 +118,19 @@ function renderTimeseries(ts){
 
 function renderEstimates(es){
   var sum=es.summary||[];
-  if(!sum.length){ el('estimates').innerHTML = empty('추정 정확도 데이터 없음 (태스크 실행 누적 후 표시)'); return; }
+  if(!sum.length){ el('estimates').innerHTML = empty('no estimate accuracy data yet (appears after task runs accumulate)'); return; }
   var rows=sum.map(function(s){
     var ratio=s.medianRatio; var over=ratio>1;
     var w=Math.min(100, Math.abs(Math.log10(ratio||1))*60+4);
     return '<div class="erow"><div class="elabel">'+s.size+'</div>'+
       '<div class="ebarwrap"><div class="ebar" style="width:'+w+'%;background:'+(over?'#f04438':'#3fb950')+'"></div></div>'+
-      '<div class="eval">'+ratio.toFixed(2)+'x '+(over?'과소추정':'과대추정')+' (n='+s.n+')</div></div>';
+      '<div class="eval">'+ratio.toFixed(2)+'x '+(over?'underestimated':'overestimated')+' (n='+s.n+')</div></div>';
   }).join('');
-  el('estimates').innerHTML = '<div class="ehint">실측/추정 비율 (1.0 = 정확)</div>'+rows;
+  el('estimates').innerHTML = '<div class="ehint">actual/estimate ratio (1.0 = exact)</div>'+rows;
 }
 
 function renderQueue(q){
-  var order=[['queued','대기'],['running','실행중'],['done','완료'],['carried_over','이월'],['failed','실패']];
+  var order=[['queued','queued'],['running','running'],['done','done'],['carried_over','carried over'],['failed','failed']];
   el('queue').innerHTML = order.map(function(o){
     return '<div class="qchip"><span class="qn">'+(q[o[0]]||0)+'</span><span class="ql">'+o[1]+'</span></div>';
   }).join('');
@@ -145,13 +145,13 @@ function load(){
     fetch('/api/estimates').then(function(r){return r.json();}),
     fetch('/api/queue').then(function(r){return r.json();})
   ]).then(function(a){
-    try{ renderOverview(a[0]); }catch(e){ el('gauges').innerHTML=empty('overview 오류: '+e); }
-    try{ renderModels(a[1]); }catch(e){ el('models').innerHTML=empty('models 오류: '+e); }
-    try{ renderContrib(a[2]); }catch(e){ el('contrib').innerHTML=empty('contrib 오류: '+e); }
-    try{ renderTimeseries(a[3]); }catch(e){ el('timeseries').innerHTML=empty('timeseries 오류: '+e); }
-    try{ renderEstimates(a[4]); }catch(e){ el('estimates').innerHTML=empty('estimates 오류: '+e); }
-    try{ renderQueue(a[5]); }catch(e){ el('queue').innerHTML=empty('queue 오류'); }
-  }).catch(function(e){ el('gauges').innerHTML=empty('로드 실패: '+e); });
+    try{ renderOverview(a[0]); }catch(e){ el('gauges').innerHTML=empty('overview error: '+e); }
+    try{ renderModels(a[1]); }catch(e){ el('models').innerHTML=empty('models error: '+e); }
+    try{ renderContrib(a[2]); }catch(e){ el('contrib').innerHTML=empty('contrib error: '+e); }
+    try{ renderTimeseries(a[3]); }catch(e){ el('timeseries').innerHTML=empty('timeseries error: '+e); }
+    try{ renderEstimates(a[4]); }catch(e){ el('estimates').innerHTML=empty('estimates error: '+e); }
+    try{ renderQueue(a[5]); }catch(e){ el('queue').innerHTML=empty('queue error'); }
+  }).catch(function(e){ el('gauges').innerHTML=empty('load failed: '+e); });
 }
 load();
 setInterval(load, 60000);
@@ -214,7 +214,7 @@ main{max-width:1180px;margin:0 auto;padding:22px 24px;display:flex;flex-directio
 `;
 
 export const DASHBOARD_HTML = `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"/>
+<html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Claude Quota</title>
 <style>${STYLE}</style></head>
@@ -223,19 +223,19 @@ export const DASHBOARD_HTML = `<!doctype html>
   <h1>Claude Quota</h1>
   <span id="updated" class="muted">loading…</span>
   <span id="scope"></span>
-  <button id="refresh">새로고침</button>
+  <button id="refresh">Refresh</button>
 </header>
 <main>
   <section class="card"><div id="gauges"></div><div id="kpi"></div><div id="ingestfresh" class="muted" style="font-size:11px;margin-top:8px"></div></section>
   <div class="row two">
-    <section class="card"><h2>모델별 사용량 (전체 Claude Code)</h2><div id="models"></div><div id="tokcat" style="margin-top:14px"></div></section>
-    <section class="card"><h2>활동 (일별 전체 토큰)</h2><div id="contrib"></div></section>
+    <section class="card"><h2>Usage by model (all Claude Code)</h2><div id="models"></div><div id="tokcat" style="margin-top:14px"></div></section>
+    <section class="card"><h2>Activity (daily total tokens)</h2><div id="contrib"></div></section>
   </div>
   <div class="row two">
-    <section class="card"><h2>윈도우 사용률 추이</h2><div id="timeseries"></div></section>
-    <section class="card"><h2>추정 정확도</h2><div id="estimates"></div></section>
+    <section class="card"><h2>Window usage over time</h2><div id="timeseries"></div></section>
+    <section class="card"><h2>Estimate accuracy</h2><div id="estimates"></div></section>
   </div>
-  <section class="card"><h2>태스크 큐</h2><div id="queue"></div></section>
+  <section class="card"><h2>Task queue</h2><div id="queue"></div></section>
 </main>
 <script>${SCRIPT}</script>
 </body></html>`;

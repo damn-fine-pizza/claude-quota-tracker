@@ -383,7 +383,7 @@ export class Store {
       : null;
   }
 
-  /** estimate vs actual joined view — the DoD "조회 가능" query. */
+  /** estimate vs actual joined view — the DoD "queryable" requirement. */
   estimationRecords(): Array<{
     taskId: number;
     size: TaskSize;

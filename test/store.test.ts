@@ -108,7 +108,7 @@ describe("Store task queue (in-memory)", () => {
     store.close();
   });
 
-  it("claims 'any'-window unattended tasks too (night ⊂ any; deferOk=false ≠ night 제외)", () => {
+  it("claims 'any'-window unattended tasks too (night ⊂ any; deferOk=false doesn't mean excluded from night)", () => {
     const store = new Store(":memory:");
     store.enqueueTask(100, taskInput({ deferOk: false, scheduledWindow: "any" }));
     expect(store.claimNextTask(200)?.scheduledWindow).toBe("any");
