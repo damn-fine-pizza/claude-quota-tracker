@@ -154,8 +154,54 @@ function load(){
   }).catch(function(e){ el('gauges').innerHTML=empty('load failed: '+e); });
 }
 load();
-setInterval(load, 60000);
 el('refresh').addEventListener('click', load);
+
+var AUTOREFRESH_MS = 60000;
+var autorefreshTimer = null;
+function setAutoRefresh(on){
+  if(autorefreshTimer){ clearInterval(autorefreshTimer); autorefreshTimer=null; }
+  if(on){ autorefreshTimer = setInterval(load, AUTOREFRESH_MS); }
+  try{ localStorage.setItem('quota-dashboard-autorefresh', on ? '1' : '0'); }catch(e){}
+}
+var savedAutoRefresh = true;
+try{ var v = localStorage.getItem('quota-dashboard-autorefresh'); if(v !== null) savedAutoRefresh = v === '1'; }catch(e){}
+el('autorefresh').checked = savedAutoRefresh;
+setAutoRefresh(savedAutoRefresh);
+el('autorefresh').addEventListener('change', function(){ setAutoRefresh(this.checked); });
+
+function loadSettings(){
+  fetch('/api/settings').then(function(r){return r.json();}).then(function(s){
+    el('s-pacingEnabled').checked = !!s.pacing.enabled;
+    el('s-slackPct').value = s.pacing.slackPct;
+    el('s-sessionWindowHours').value = s.pacing.sessionWindowHours;
+    el('s-weeklyWindowHours').value = s.pacing.weeklyWindowHours;
+    el('s-continuousEnabled').checked = !!s.pacing.continuousEnabled;
+    el('s-deadlineSafetyMinutes').value = s.pacing.deadlineSafetyMinutes;
+    el('s-adaptiveMinSamples').value = s.pacing.adaptiveMinSamples;
+    el('s-autoOpen').checked = !!s.dashboard.autoOpen;
+  }).catch(function(e){ el('settingsMsg').textContent = 'load failed: '+e; });
+}
+function saveSettings(){
+  var body = {
+    pacing: {
+      enabled: el('s-pacingEnabled').checked,
+      slackPct: Number(el('s-slackPct').value),
+      sessionWindowHours: Number(el('s-sessionWindowHours').value),
+      weeklyWindowHours: Number(el('s-weeklyWindowHours').value),
+      continuousEnabled: el('s-continuousEnabled').checked,
+      deadlineSafetyMinutes: Number(el('s-deadlineSafetyMinutes').value),
+      adaptiveMinSamples: Number(el('s-adaptiveMinSamples').value)
+    },
+    dashboard: { autoOpen: el('s-autoOpen').checked }
+  };
+  el('settingsMsg').textContent = 'saving…';
+  fetch('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+    .then(function(r){ if(!r.ok) return r.json().then(function(j){ throw new Error(j.error||('HTTP '+r.status)); }); return r.json(); })
+    .then(function(){ el('settingsMsg').textContent = 'saved'; setTimeout(function(){ el('settingsMsg').textContent=''; }, 2000); })
+    .catch(function(e){ el('settingsMsg').textContent = 'save failed: '+e; });
+}
+loadSettings();
+el('settingsSave').addEventListener('click', saveSettings);
 `;
 
 const STYLE = String.raw`
@@ -211,6 +257,15 @@ main{max-width:1180px;margin:0 auto;padding:22px 24px;display:flex;flex-directio
 .qchip{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 14px;text-align:center;}
 .qn{display:block;font-size:20px;font-weight:600;}
 .ql{font-size:11px;color:var(--muted);}
+.autorefresh{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;}
+.setgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;}
+@media(max-width:720px){.setgrid{grid-template-columns:1fr;}}
+.setgrid label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+.setgrid input[type=number]{width:90px;background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--fg);padding:4px 8px;font-size:12px;}
+.setactions{display:flex;align-items:center;gap:10px;margin-top:14px;}
+#settingsSave{background:#4493f8;color:#fff;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;font-size:12px;font-weight:600;}
+#settingsSave:hover{background:#5aa1f9;}
+#settingsMsg{font-size:12px;color:var(--muted);}
 `;
 
 export const DASHBOARD_HTML = `<!doctype html>
@@ -223,6 +278,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <h1>Claude Quota</h1>
   <span id="updated" class="muted">loading…</span>
   <span id="scope"></span>
+  <label class="autorefresh"><input type="checkbox" id="autorefresh"/> Auto-refresh (60s)</label>
   <button id="refresh">Refresh</button>
 </header>
 <main>
@@ -236,6 +292,20 @@ export const DASHBOARD_HTML = `<!doctype html>
     <section class="card"><h2>Estimate accuracy</h2><div id="estimates"></div></section>
   </div>
   <section class="card"><h2>Task queue</h2><div id="queue"></div></section>
+  <section class="card">
+    <h2>Settings</h2>
+    <div class="setgrid">
+      <label><input type="checkbox" id="s-pacingEnabled"/> Pacing enabled</label>
+      <label>Slack % <input type="number" id="s-slackPct" min="0" step="1"/></label>
+      <label>Session window (hours) <input type="number" id="s-sessionWindowHours" min="0.1" step="0.5"/></label>
+      <label>Weekly window (hours) <input type="number" id="s-weeklyWindowHours" min="0.1" step="1"/></label>
+      <label><input type="checkbox" id="s-continuousEnabled"/> Continuous (run outside night window)</label>
+      <label>Deadline safety (minutes) <input type="number" id="s-deadlineSafetyMinutes" min="0" step="1"/></label>
+      <label>Adaptive min samples <input type="number" id="s-adaptiveMinSamples" min="1" step="1"/></label>
+      <label><input type="checkbox" id="s-autoOpen"/> Auto-open dashboard when mcp/mcp-http starts</label>
+    </div>
+    <div class="setactions"><button id="settingsSave">Save</button><span id="settingsMsg" class="muted"></span></div>
+  </section>
 </main>
 <script>${SCRIPT}</script>
 </body></html>`;

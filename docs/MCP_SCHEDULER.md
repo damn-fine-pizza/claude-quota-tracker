@@ -4,7 +4,9 @@ The fork exposes the quota-aware scheduler over stdio MCP.
 
 ## Enable pacing
 
-Copy `config.example.json` to your active config and enable:
+Copy `config.example.json` to your active config and enable, or use the
+dashboard's **Settings** panel (`claude-quota dashboard --open`) to edit
+these fields without touching any file:
 
 ```json
 {

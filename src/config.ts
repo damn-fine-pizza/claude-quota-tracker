@@ -57,6 +57,8 @@ export interface DashboardConfig {
   port: number;
   /** Self-exit after this many idle minutes (0 = stay up until killed). */
   idleShutdownMin: number;
+  /** Open the dashboard in the browser when quota mcp/mcp-http starts, if not already running. */
+  autoOpen: boolean;
 }
 
 export interface McpHttpConfig {
@@ -126,6 +128,7 @@ export const DEFAULT_CONFIG: Config = {
   dashboard: {
     port: 47600,
     idleShutdownMin: 0,
+    autoOpen: false,
   },
   ingest: {
     extraRoots: [],

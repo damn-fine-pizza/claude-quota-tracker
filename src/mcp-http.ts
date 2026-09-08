@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig, type McpHttpConfig } from "./config.js";
+import { autoOpenDashboardIfConfigured } from "./dashboard.js";
 import { createMcpServer } from "./mcp/server.js";
 import { isLoopbackHost } from "./platform.js";
 import { PACKAGE_VERSION, PRODUCT_NAME } from "./version.js";
@@ -146,6 +147,7 @@ export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {})
   });
   allowedHosts = allowedHostHeaders(host, actualPort);
   console.log(`[mcp-http] listening on http://${host}:${actualPort}/mcp (health: http://${host}:${actualPort}/health)`);
+  void autoOpenDashboardIfConfigured();
   return {
     url: `http://${host}:${actualPort}`,
     port: actualPort,

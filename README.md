@@ -42,7 +42,10 @@ a SQLite file on your machine.
   dropdown. Reads cached data only; never calls Claude.
 - **📈 Local web dashboard** — gauges, **total** per-model token usage, a
   GitHub-style contribution heatmap, estimate-vs-actual accuracy, and queue
-  state. Self-contained inline SVG; opens with one menubar click.
+  state, plus a **Settings** panel to view/edit pacing and auto-open — no
+  file editing required. Self-contained inline SVG; opens with one menubar
+  click, or automatically when `claude-quota mcp`/`mcp-http` starts if
+  `dashboard.autoOpen` is enabled (opt-in, off by default).
 - **🧩 Claude Code plugin** — a skill + `UserPromptSubmit` hook so Claude itself
   becomes quota-aware and can offer to defer heavy work to the night queue.
 - **🔌 MCP, two ways** — `claude-quota mcp` (stdio, one process per client, unchanged)
@@ -233,7 +236,11 @@ claude -p "/usage" ──poll(5m)──▶ window_readings ──▶ forecast �
 - `nightWindow` — `start`/`end` (local wall-clock) + a one-time confirmation
 - `executor` — `sessionGuardPct` (default 80), `nightFloorHHMM` (default
   `02:00`), per-size timeouts, `maxAttempts`
-- `dashboard` — `port` (default 47600), `idleShutdownMin`
+- `dashboard` — `port` (default 47600), `idleShutdownMin`, `autoOpen`
+  (default `false` — open the dashboard automatically when `claude-quota
+  mcp`/`mcp-http` starts, if it isn't already running). `pacing` and
+  `autoOpen` can both be edited from the dashboard's **Settings** panel
+  instead of by hand.
 - `ingest` — `extraRoots` (extra session-log roots for custom harnesses; `~/`
   expands to `$HOME`)
 - `mcp.http` — `enabled`, `host` (default `127.0.0.1`), `port` (default
@@ -261,7 +268,7 @@ the network.
 
 ```bash
 npm run build        # tsc → dist/
-npm test             # vitest (182 tests)
+npm test             # vitest (190 tests)
 npm run typecheck
 ```
 

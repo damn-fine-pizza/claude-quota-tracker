@@ -5,9 +5,10 @@ import {
 import { createServer, get, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { DATA_DIR, DB_PATH, loadConfig } from "./config.js";
+import { DATA_DIR, DB_PATH, loadConfig, saveConfigPatch, type DashboardConfig } from "./config.js";
 import * as api from "./dashboard-api.js";
 import { DASHBOARD_HTML } from "./dashboard-html.js";
+import { loadPacingConfig, type PacingConfig } from "./pacing-config.js";
 import { openBrowserUrl } from "./platform.js";
 import { isSea } from "./sea.js";
 import { Store } from "./store.js";
@@ -45,11 +46,107 @@ function handleApi(store: Store, url: URL, res: ServerResponse): void {
   }
 }
 function hostIsLocal(req: IncomingMessage): boolean { const host = (req.headers.host ?? "").split(":")[0].toLowerCase(); return host === "" || host === "127.0.0.1" || host === "localhost" || host === "[::1]" || host === "::1"; }
+
+/** Dashboard always binds 127.0.0.1; only a request with a matching (or absent) Origin may write settings. */
+export function originAllowed(origin: string | undefined, port: number): boolean {
+  if (!origin) return true;
+  try {
+    const host = new URL(origin).host;
+    return host === `127.0.0.1:${port}` || host === `localhost:${port}` || host === `[::1]:${port}`;
+  } catch {
+    return false;
+  }
+}
+
+const MAX_SETTINGS_BODY_BYTES = 100_000;
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_SETTINGS_BODY_BYTES) { req.destroy(); reject(new Error("request body too large")); return; }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      try { resolve(raw ? JSON.parse(raw) : {}); } catch (e) { reject(e); }
+    });
+    req.on("error", reject);
+  });
+}
+
+function num(v: unknown, current: number, min: number): number {
+  if (v === undefined) return current;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < min) throw new Error("invalid number");
+  return v;
+}
+function bool(v: unknown, current: boolean): boolean {
+  if (v === undefined) return current;
+  if (typeof v !== "boolean") throw new Error("invalid boolean");
+  return v;
+}
+function obj(v: unknown): Record<string, unknown> {
+  if (v === undefined) return {};
+  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new Error("expected an object");
+  return v as Record<string, unknown>;
+}
+
+/** Merges a partial patch onto the CURRENT full section (not just defaults), so an unspecified field is never wiped. */
+function mergePacingPatch(current: PacingConfig, patch: unknown): PacingConfig {
+  const p = obj(patch);
+  return {
+    enabled: bool(p.enabled, current.enabled),
+    slackPct: num(p.slackPct, current.slackPct, 0),
+    sessionWindowHours: num(p.sessionWindowHours, current.sessionWindowHours, 0.1),
+    weeklyWindowHours: num(p.weeklyWindowHours, current.weeklyWindowHours, 0.1),
+    continuousEnabled: bool(p.continuousEnabled, current.continuousEnabled),
+    deadlineSafetyMinutes: num(p.deadlineSafetyMinutes, current.deadlineSafetyMinutes, 0),
+    adaptiveMinSamples: num(p.adaptiveMinSamples, current.adaptiveMinSamples, 1),
+  };
+}
+function mergeDashboardPatch(current: DashboardConfig, patch: unknown): DashboardConfig {
+  const p = obj(patch);
+  return { ...current, autoOpen: bool(p.autoOpen, current.autoOpen) };
+}
+
+export interface Settings { pacing: PacingConfig; dashboard: DashboardConfig }
+export function currentSettings(): Settings {
+  return { pacing: loadPacingConfig(), dashboard: loadConfig().dashboard };
+}
+/** Applies only the sections present in the request body; sections omitted from the body are left untouched on disk. */
+export function applySettingsPatch(body: unknown): Settings {
+  const b = obj(body);
+  const current = currentSettings();
+  const next: Settings = { ...current };
+  const patch: Partial<Record<"pacing" | "dashboard", unknown>> = {};
+  if ("pacing" in b) { next.pacing = mergePacingPatch(current.pacing, b.pacing); patch.pacing = next.pacing; }
+  if ("dashboard" in b) { next.dashboard = mergeDashboardPatch(current.dashboard, b.dashboard); patch.dashboard = next.dashboard; }
+  if (Object.keys(patch).length > 0) saveConfigPatch(patch);
+  return next;
+}
 function startServer(port: number, token: string): void {
   const cfg = loadConfig(); mkdirSync(DATA_DIR, { recursive: true }); const startedAtMs = Date.now(); let lastReqMs = startedAtMs;
   const server = createServer((req, res) => {
     lastReqMs = Date.now(); if (!hostIsLocal(req)) return json(res, 403, { error: "forbidden host" });
-    const url = new URL(req.url ?? "/", "http://127.0.0.1"); if (req.method !== "GET") return json(res, 405, { error: "method not allowed" });
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname === "/api/settings") {
+      if (req.method === "GET") return json(res, 200, currentSettings());
+      if (req.method === "POST") {
+        if (!originAllowed(req.headers.origin, port)) return json(res, 403, { error: "origin not allowed" });
+        void (async () => {
+          try {
+            const body = await readJsonBody(req);
+            json(res, 200, applySettingsPatch(body));
+          } catch (e) {
+            json(res, 400, { error: (e as Error).message });
+          }
+        })();
+        return;
+      }
+      return json(res, 405, { error: "method not allowed" });
+    }
+    if (req.method !== "GET") return json(res, 405, { error: "method not allowed" });
     if (url.pathname === "/healthz") return json(res, 200, { ok: true, pid: process.pid, token, startedAtMs });
     if (url.pathname === "/") { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); return res.end(DASHBOARD_HTML); }
     if (url.pathname.startsWith("/api/")) { const store = new Store(DB_PATH); try { handleApi(store, url, res); } catch (e) { json(res, 500, { error: String(e) }); } finally { store.close(); } return; }
@@ -66,8 +163,8 @@ function startServer(port: number, token: string): void {
 }
 const LAUNCH_LOCK = join(DATA_DIR, "dashboard.launching");
 async function waitAndOpen(open: boolean): Promise<boolean> { for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 50)); const port = await probeAlive(); if (port !== null) { if (open) openBrowser(port); return true; } } return false; }
-async function launch(open: boolean): Promise<void> {
-  const alive = await probeAlive(); if (alive !== null) { if (open) openBrowser(alive); return; } mkdirSync(DATA_DIR, { recursive: true });
+async function launch(open: boolean, onlyIfFresh = false): Promise<void> {
+  const alive = await probeAlive(); if (alive !== null) { if (open && !onlyIfFresh) openBrowser(alive); return; } mkdirSync(DATA_DIR, { recursive: true });
   try { writeFileSync(LAUNCH_LOCK, String(process.pid), { flag: "wx" }); } catch { if (await waitAndOpen(open)) return; try { unlinkSync(LAUNCH_LOCK); } catch {} try { writeFileSync(LAUNCH_LOCK, String(process.pid), { flag: "wx" }); } catch { return; } }
   try {
     const args = isSea() ? ["dashboard", "--foreground"] : [join(dirname(fileURLToPath(import.meta.url)), "dashboard.js"), "--foreground"];
@@ -76,5 +173,14 @@ async function launch(open: boolean): Promise<void> {
   } finally { try { unlinkSync(LAUNCH_LOCK); } catch {} }
 }
 export async function dashboard(argv: string[]): Promise<void> { if (argv.includes("--foreground")) { const cfg = loadConfig(); startServer(cfg.dashboard.port, `${process.pid}-${Date.now()}`); return; } await launch(argv.includes("--open")); }
+/** Called from quota mcp/mcp-http startup when config.dashboard.autoOpen is set. Only opens a browser tab for a freshly-spawned server — never re-opens one against an already-running dashboard, so a browser tab doesn't pop up on every MCP session. */
+export async function autoOpenDashboardIfConfigured(): Promise<void> {
+  try {
+    if (!loadConfig().dashboard.autoOpen) return;
+    await launch(true, true);
+  } catch (e) {
+    console.error("[dashboard] auto-open failed:", e);
+  }
+}
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) dashboard(process.argv.slice(2)).catch((e) => { console.error("[dashboard] fatal:", e); process.exitCode = 1; });
