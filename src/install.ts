@@ -10,12 +10,12 @@ import { normalizePlatform } from "./platform.js";
 
 const LABEL = "com.quota-tracker.poller";
 const LEGACY_LABEL = "com.jaejun.quota-tracker.poller";
-const APP_HOME = join(homedir(), ".quota-tracker");
+export const APP_HOME = join(homedir(), ".quota-tracker");
 const APP_DATA = join(APP_HOME, "data");
 const APP_CONFIG = join(APP_HOME, "config.json");
 const APP_PLUGINS = join(APP_HOME, "plugins");
 const LIB_DIST = join(APP_HOME, "lib", "dist");
-const LAUNCHER = join(homedir(), ".local", "bin", "quota");
+export const LAUNCHER = join(homedir(), ".local", "bin", "quota");
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
 const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "quota-tracker.service");
 const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "quota-tracker.timer");
@@ -25,16 +25,25 @@ function run(bin: string, args: string[], opts: { allowFail?: boolean } = {}): s
   try { return execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
   catch (e) { if (opts.allowFail) return ""; throw e; }
 }
-function commandWorks(bin: string, args: string[]): boolean { try { execFileSync(bin, args, { stdio: "ignore" }); return true; } catch { return false; } }
+export function commandWorks(bin: string, args: string[]): boolean { try { execFileSync(bin, args, { stdio: "ignore" }); return true; } catch { return false; } }
 function resolveNodePath(): string {
   for (const p of ["/opt/homebrew/bin/node", "/usr/local/bin/node"]) if (existsSync(p)) return p;
   return process.execPath;
 }
+export const INSTALL_SOURCE_PATH = join(APP_HOME, "install-source.json");
+
+function recordInstallSource(srcDist: string): void {
+  const repoRoot = dirname(srcDist);
+  if (!existsSync(join(repoRoot, ".git"))) return;
+  writeFileSync(INSTALL_SOURCE_PATH, JSON.stringify({ repoRoot, installedAt: new Date().toISOString() }, null, 2) + "\n");
+}
+
 function installRuntime(nodePath: string): void {
   const srcDist = dirname(fileURLToPath(import.meta.url));
   if (resolve(srcDist) !== resolve(LIB_DIST)) {
     rmSync(LIB_DIST, { recursive: true, force: true }); mkdirSync(dirname(LIB_DIST), { recursive: true }); cpSync(srcDist, LIB_DIST, { recursive: true });
     console.log(`✓ runtime → ${LIB_DIST}`);
+    recordInstallSource(srcDist);
   }
   mkdirSync(dirname(LAUNCHER), { recursive: true });
   writeFileSync(LAUNCHER, `#!/bin/sh\nexport QUOTA_TRACKER_HOME="\${QUOTA_TRACKER_HOME:-$HOME/.quota-tracker}"\nexec "${nodePath}" "${join(LIB_DIST, "cli.js")}" "$@"\n`);
@@ -55,7 +64,7 @@ function installLaunchd(nodePath: string): void {
   const uid = process.getuid!(); removeAgent(LEGACY_LABEL); run("launchctl", ["bootout", `gui/${uid}/${LABEL}`], { allowFail: true }); run("launchctl", ["bootstrap", `gui/${uid}`, plistPath()]);
   console.log("✓ launchd poller installed");
 }
-function systemdUsable(): boolean {
+export function systemdUsable(): boolean {
   return commandWorks("systemctl", ["--user", "show-environment"]);
 }
 function installSystemd(): boolean {

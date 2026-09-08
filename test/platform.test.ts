@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { browserCommand, normalizePlatform, notificationCommand } from "../src/platform.js";
+import {
+  browserCommand, detectContainerEnvironment, isLoopbackHost, normalizePlatform, notificationCommand,
+} from "../src/platform.js";
 
 describe("platform helpers", () => {
   it("selects xdg-open on Linux", () => {
@@ -26,5 +28,30 @@ describe("platform helpers", () => {
     expect(normalizePlatform("win32")).toBe("other");
     expect(browserCommand("win32")).toBeNull();
     expect(notificationCommand("t", "b", "win32")).toBeNull();
+  });
+});
+
+describe("isLoopbackHost", () => {
+  it("recognizes common loopback hosts", () => {
+    expect(isLoopbackHost("127.0.0.1")).toBe(true);
+    expect(isLoopbackHost("localhost")).toBe(true);
+    expect(isLoopbackHost("::1")).toBe(true);
+  });
+
+  it("rejects non-loopback hosts", () => {
+    expect(isLoopbackHost("0.0.0.0")).toBe(false);
+    expect(isLoopbackHost("192.168.1.5")).toBe(false);
+  });
+});
+
+describe("detectContainerEnvironment", () => {
+  it("is true when $container is set (systemd-nspawn/podman/toolbox convention)", () => {
+    const prev = process.env.container;
+    process.env.container = "podman";
+    try {
+      expect(detectContainerEnvironment()).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.container; else process.env.container = prev;
+    }
   });
 });

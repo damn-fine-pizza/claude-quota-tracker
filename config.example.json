@@ -38,5 +38,16 @@
   },
   "ingest": {
     "extraRoots": []
+  },
+  "mcp": {
+    "http": {
+      "enabled": false,
+      "host": "127.0.0.1",
+      "port": 47601
+    }
+  },
+  "update": {
+    "repository": "damn-fine-pizza/claude-quota-tracker",
+    "channel": "stable"
   }
 }

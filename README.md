@@ -1,12 +1,13 @@
 # Claude Quota Tracker
 
-> Track your Claude Max usage windows, never waste a quota window, and schedule
-> heavy work for the quiet hours — a local-first macOS companion for Claude Code.
+> A local-first Claude Code quota tracker and quota-aware task scheduler for
+> macOS and Linux. Track your Claude Max usage windows, never waste a quota
+> window, and schedule heavy work for the quiet hours.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#requirements)
+[![Platform: macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#requirements)
 [![Node ≥22.5](https://img.shields.io/badge/node-%E2%89%A522.5-339933.svg?logo=node.js&logoColor=white)](#requirements)
-[![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-success.svg)](#how-it-works)
+[![Runtime deps: 2](https://img.shields.io/badge/runtime%20deps-2-success.svg)](#how-it-works)
 [![For Claude Code](https://img.shields.io/badge/for-Claude%20Code-8A2BE2.svg)](https://claude.com/claude-code)
 
 ![Claude Quota Tracker dashboard](docs/dashboard.png)
@@ -44,6 +45,13 @@ a SQLite file on your machine.
   state. Self-contained inline SVG; opens with one menubar click.
 - **🧩 Claude Code plugin** — a skill + `UserPromptSubmit` hook so Claude itself
   becomes quota-aware and can offer to defer heavy work to the night queue.
+- **🔌 MCP, two ways** — `quota mcp` (stdio, one process per client, unchanged)
+  and `quota mcp-http` (local Streamable HTTP on `127.0.0.1:47601/mcp`, one
+  persistent server multiple clients can share). Same tools, same
+  authorization rules either way — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md).
+- **🩺 Runtime tooling** — `quota version`, `quota doctor`, and `quota update`
+  make the installed runtime self-describing, diagnosable, and upgradable
+  without ever touching a client's `.mcp.json`.
 
 ---
 
@@ -77,29 +85,42 @@ Open Dashboard
 
 ## Requirements
 
-- **macOS** (Apple Silicon or Intel)
+- **macOS** (Apple Silicon or Intel) **or Linux** (systemd `--user` optional —
+  see [`docs/LINUX.md`](docs/LINUX.md) for the portable-daemon fallback,
+  including Distrobox/containers/no-init environments)
 - **Node ≥ 22.5** — uses the built-in `node:sqlite`; no native modules
 - **[Claude Code](https://claude.com/claude-code) CLI**, logged in (so
   `claude -p "/usage"` works)
-- *(optional)* [SwiftBar](https://swiftbar.app) for the menubar plugin —
-  installed automatically by `setup.sh` if Homebrew is present
+- *(optional, macOS)* [SwiftBar](https://swiftbar.app) for the menubar
+  plugin — installed automatically by `setup.sh` if Homebrew is present
+
+Run `quota doctor` any time to check what's available/missing in your
+specific environment — a missing systemd session or desktop helper is always
+a warning, never a hard failure.
 
 ---
 
 ## Install
 
 ```bash
-git clone https://github.com/cooco119/claude-quota-tracker.git
+git clone https://github.com/damn-fine-pizza/claude-quota-tracker.git
 cd claude-quota-tracker
 npm install
 bash scripts/setup.sh
 ```
 
 `setup.sh` compiles the project, installs a tiny launcher to
-`~/.local/bin/quota`, registers a launchd agent that polls every 5 minutes,
-and starts the SwiftBar menubar. Config and data live in `~/.quota-tracker/`.
+`~/.local/bin/quota`, and registers a native scheduler when one is available
+(a launchd agent on macOS, a `systemd --user` timer on Linux) that polls
+every 5 minutes; on Linux without systemd (or in a container/Distrobox),
+install completes without a background scheduler and prints the portable
+`quota daemon` fallback command instead — see
+[`docs/LINUX.md`](docs/LINUX.md). Config and data live in
+`~/.quota-tracker/`.
 
-To remove: `quota uninstall` (your data is preserved).
+To remove: `quota uninstall` (your data is preserved). To update an existing
+install without touching your MCP client config: `quota update` — see
+[`docs/UPDATING.md`](docs/UPDATING.md).
 
 > Why a launcher and not a single binary? An ad-hoc-signed Node SEA binary gets
 > SIGKILLed by the Apple Silicon kernel once `cp` breaks its signature. Node is
@@ -120,6 +141,9 @@ quota enqueue --night --prompt "..." --size m --perm read-only
 
 # Run a destructive/urgent task manually, while you watch:
 quota executor --task <id>
+
+quota version                # runtime/version info (--json available)
+quota doctor                 # diagnose install, MCP, scheduler, platform integration
 ```
 
 `--perm` triages how the task may run unattended:
@@ -155,7 +179,7 @@ few days of history exist, targets the lowest-burn hour of the window.
 This repo is also a Claude Code marketplace (`.claude-plugin/marketplace.json`):
 
 ```text
-/plugin marketplace add cooco119/claude-quota-tracker
+/plugin marketplace add damn-fine-pizza/claude-quota-tracker
 /plugin install quota-tracker@quota-tracker-marketplace
 ```
 
@@ -176,9 +200,13 @@ claude -p "/usage" ──poll(5m)──▶ window_readings ──▶ forecast �
 quota enqueue ──▶ tasks ──night executor──▶ task_runs┘
 ```
 
-- **Zero runtime dependencies.** Everything is the Node standard library
-  (`node:sqlite`, `node:http`, `fs`). The dashboard's charts are hand-rolled
-  inline SVG — no CDN, no build step, works offline.
+- **Minimal runtime dependencies.** Everything except the MCP server is the
+  Node standard library (`node:sqlite`, `node:http`, `fs`) — the dashboard's
+  charts are hand-rolled inline SVG, no CDN, no build step, works offline.
+  MCP (both the stdio and HTTP transports) uses the official
+  `@modelcontextprotocol/sdk` and `zod`, so protocol-version negotiation and
+  JSON-Schema generation come from the maintained library rather than a
+  hand-rolled implementation.
 - **Two separate data sources, on purpose.** `usage_events` (ingested from your
   Claude Code session logs, deduped by `message.id`) is your total usage and
   drives the dashboard's model/heatmap/token charts. `task_runs` is only the
@@ -206,6 +234,11 @@ quota enqueue ──▶ tasks ──night executor──▶ task_runs┘
 - `dashboard` — `port` (default 47600), `idleShutdownMin`
 - `ingest` — `extraRoots` (extra session-log roots for custom harnesses; `~/`
   expands to `$HOME`)
+- `mcp.http` — `enabled`, `host` (default `127.0.0.1`), `port` (default
+  `47601`) for `quota mcp-http` — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)
+- `update` — `repository` (default `damn-fine-pizza/claude-quota-tracker`),
+  `channel` for `quota update --check` — see
+  [`docs/UPDATING.md`](docs/UPDATING.md)
 
 ---
 
@@ -213,8 +246,12 @@ quota enqueue ──▶ tasks ──night executor──▶ task_runs┘
 
 Everything stays on your machine. Quota Tracker reads `claude -p "/usage"` and
 your local `~/.claude/projects/*.jsonl` session logs, and writes a SQLite file
-under `~/.quota-tracker/`. Nothing is sent anywhere. Token stats reflect Claude
-Code usage only (not claude.ai / the web app).
+under `~/.quota-tracker/`. Token stats reflect Claude Code usage only (not
+claude.ai / the web app). The MCP HTTP transport only ever binds to
+localhost. Beyond the `claude` CLI itself, the only network call this
+project's own code makes is `quota update --check`, which queries the
+GitHub Releases API for the configured repository — nothing else reaches
+the network.
 
 ---
 
@@ -222,7 +259,7 @@ Code usage only (not claude.ai / the web app).
 
 ```bash
 npm run build        # tsc → dist/
-npm test             # vitest (116 tests)
+npm test             # vitest (179 tests)
 npm run typecheck
 ```
 

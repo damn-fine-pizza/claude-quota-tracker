@@ -1,8 +1,8 @@
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DATA_DIR, DB_PATH, loadConfig } from "./config.js";
 import { executeTask, recoverStaleRunning } from "./executor.js";
+import { acquireLock, releaseLock } from "./lockfile.js";
 import { estimateTaskTokens } from "./adaptive-estimate.js";
 import { loadPacingConfig } from "./pacing-config.js";
 import { quotaPacingVerdict } from "./pacing.js";
@@ -16,31 +16,8 @@ import {
 } from "./tasks.js";
 import { SIZE_ESTIMATES, type Task } from "./types.js";
 
-const LOCK_PATH = join(DATA_DIR, "paced-executor.lock");
-
-function isPidAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
-}
-
-function acquireLock(): boolean {
-  for (let i = 0; i < 2; i++) {
-    try { writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" }); return true; }
-    catch {
-      try {
-        const pid = Number(readFileSync(LOCK_PATH, "utf8"));
-        if (isPidAlive(pid)) return false;
-        unlinkSync(LOCK_PATH);
-      } catch { return false; }
-    }
-  }
-  return false;
-}
-
-function releaseLock(): void {
-  try {
-    if (Number(readFileSync(LOCK_PATH, "utf8")) === process.pid) unlinkSync(LOCK_PATH);
-  } catch { /* already gone */ }
-}
+/** Shared with executor.ts's runNightLoop/runManualTask — one Claude execution system-wide at a time. */
+const LOCK_PATH = join(DATA_DIR, "claude-exec.lock");
 
 function taskFitsNight(task: Task, nowMs: number, end: string, timeoutMinutes: number): boolean {
   return timeoutMinutes * 60_000 <= msUntilWindowEnd(nowMs, { end });
@@ -54,7 +31,7 @@ function taskFitsNight(task: Task, nowMs: number, end: string, timeoutMinutes: n
 export async function runPacedOnce(): Promise<boolean> {
   const config = loadConfig();
   const pacingCfg = loadPacingConfig();
-  if (!acquireLock()) {
+  if (!acquireLock(LOCK_PATH)) {
     console.log("[paced-executor] another scheduler holds the lock");
     return false;
   }
@@ -151,7 +128,7 @@ export async function runPacedOnce(): Promise<boolean> {
   } finally {
     metaStore.close();
     store.close();
-    releaseLock();
+    releaseLock(LOCK_PATH);
   }
 }
 

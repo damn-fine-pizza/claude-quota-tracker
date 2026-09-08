@@ -1,12 +1,11 @@
-import {
-  existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   DATA_DIR, DB_PATH, LATEST_JSON_PATH, loadConfig,
   type Config, type ExecutorConfig,
 } from "./config.js";
+import { acquireLock, isPidAlive, releaseLock } from "./lockfile.js";
 import { sendMacNotification } from "./notify.js";
 import { addWorktree, runClaudeTask, type RunDeps } from "./runner.js";
 import { Store } from "./store.js";
@@ -22,7 +21,12 @@ import type { Task, TaskSize } from "./types.js";
  * the task would otherwise look dead — recovering it then double-runs it.
  */
 const RECOVER_GRACE_MS = 2 * 60 * 1000;
-const LOCK_PATH = join(DATA_DIR, "executor.lock");
+
+/**
+ * Shared across runNightLoop/runPacedOnce/runManualTask: only one Claude
+ * execution runs system-wide at a time, whatever triggered it.
+ */
+const LOCK_PATH = join(DATA_DIR, "claude-exec.lock");
 
 interface LatestSnapshot {
   generatedAtMs: number | null;
@@ -57,16 +61,6 @@ function readLatest(nowMs: number): LatestSnapshot {
     };
   } catch {
     return { generatedAtMs: null, guard: empty };
-  }
-}
-
-function isPidAlive(pid: number | null): boolean {
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -163,37 +157,10 @@ export async function executeTask(
   return success;
 }
 
-/** O_EXCL lockfile so two pollOnce calls cannot spawn two night loops. */
-function acquireLock(): boolean {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      writeFileSync(LOCK_PATH, String(process.pid), { flag: "wx" });
-      return true;
-    } catch {
-      try {
-        const holder = Number(readFileSync(LOCK_PATH, "utf8"));
-        if (isPidAlive(holder)) return false;
-        unlinkSync(LOCK_PATH); // stale lock from a dead executor
-      } catch {
-        return false;
-      }
-    }
-  }
-  return false;
-}
-
-function releaseLock(): void {
-  try {
-    if (Number(readFileSync(LOCK_PATH, "utf8")) === process.pid) unlinkSync(LOCK_PATH);
-  } catch {
-    // already gone
-  }
-}
-
 /** Night loop: re-evaluate gates before every claim, drain until blocked. */
 export async function runNightLoop(deps: RunDeps = {}): Promise<void> {
   const config = loadConfig();
-  if (!acquireLock()) {
+  if (!acquireLock(LOCK_PATH)) {
     console.log("[executor] another executor holds the lock; exiting");
     return;
   }
@@ -253,16 +220,26 @@ export async function runNightLoop(deps: RunDeps = {}): Promise<void> {
     }
   } finally {
     store.close();
-    releaseLock();
+    releaseLock(LOCK_PATH);
   }
 }
 
+export interface ManualRunResult {
+  ok: boolean;
+  reason?: "locked" | "guard" | "not_found";
+}
+
 /**
- * Manual attended run of one specific task (`--task <id>`): bypasses the
- * night-window gates (the user is watching) but still respects the window
- * guard, and records through the same estimation path.
+ * Manual attended run of one specific task (`--task <id>`, or MCP `run_now`):
+ * bypasses the night-window gates (the user is watching) but still respects
+ * the window guard and the shared execution lock, and records through the
+ * same estimation path.
  */
-export async function runManualTask(id: number, deps: RunDeps = {}): Promise<boolean> {
+export async function runManualTask(id: number, deps: RunDeps = {}): Promise<ManualRunResult> {
+  if (!acquireLock(LOCK_PATH)) {
+    console.error(`[executor] task #${id} not run: another execution holds the lock`);
+    return { ok: false, reason: "locked" };
+  }
   const config = loadConfig();
   const store = new Store(DB_PATH);
   try {
@@ -277,16 +254,18 @@ export async function runManualTask(id: number, deps: RunDeps = {}): Promise<boo
     const guardVerdict = windowGuard(latest.guard, config.executor);
     if (!guardVerdict.ok) {
       console.error(`[executor] window guard: ${guardVerdict.reason}`);
-      return false;
+      return { ok: false, reason: "guard" };
     }
     const task = store.claimTaskById(nowMs, id);
     if (!task) {
       console.error(`[executor] task #${id} not found or not runnable`);
-      return false;
+      return { ok: false, reason: "not_found" };
     }
-    return await executeTask(store, task, config, latest.guard, deps);
+    const ok = await executeTask(store, task, config, latest.guard, deps);
+    return { ok };
   } finally {
     store.close();
+    releaseLock(LOCK_PATH);
   }
 }
 

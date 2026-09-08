@@ -59,6 +59,23 @@ export interface DashboardConfig {
   idleShutdownMin: number;
 }
 
+export interface McpHttpConfig {
+  enabled: boolean;
+  /** Bind address. Anything other than a loopback address prints a warning. */
+  host: string;
+  port: number;
+}
+
+export interface McpConfig {
+  http: McpHttpConfig;
+}
+
+export interface UpdateConfig {
+  /** "owner/repo" queried by `quota update --check`. Never the upstream fork. */
+  repository: string;
+  channel: string;
+}
+
 export interface IngestConfig {
   /**
    * Extra session-log roots scanned in addition to ~/.claude/projects. Custom
@@ -76,6 +93,8 @@ export interface Config {
   executor: ExecutorConfig;
   dashboard: DashboardConfig;
   ingest: IngestConfig;
+  mcp: McpConfig;
+  update: UpdateConfig;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -110,6 +129,13 @@ export const DEFAULT_CONFIG: Config = {
   },
   ingest: {
     extraRoots: [],
+  },
+  mcp: {
+    http: { enabled: false, host: "127.0.0.1", port: 47601 },
+  },
+  update: {
+    repository: "damn-fine-pizza/claude-quota-tracker",
+    channel: "stable",
   },
 };
 
@@ -165,6 +191,10 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     dashboard: { ...DEFAULT_CONFIG.dashboard, ...(raw.dashboard ?? {}) },
     ingest: { ...DEFAULT_CONFIG.ingest, ...(raw.ingest ?? {}) },
+    mcp: {
+      http: { ...DEFAULT_CONFIG.mcp.http, ...(raw.mcp?.http ?? {}) },
+    },
+    update: { ...DEFAULT_CONFIG.update, ...(raw.update ?? {}) },
   };
 }
 

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 
 export type SupportedPlatform = "darwin" | "linux" | "other";
 
@@ -51,4 +52,17 @@ export function openBrowserUrl(url: string): boolean {
   if (!cmd) return false;
   execFile(cmd.bin, [...cmd.args, url], () => {});
   return true;
+}
+
+export function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
+/**
+ * Container/Distrobox detection via well-known marker files/env vars, not
+ * process-name heuristics: Podman/Distrobox write /run/.containerenv, Docker
+ * writes /.dockerenv, and systemd-nspawn-family runtimes set $container.
+ */
+export function detectContainerEnvironment(): boolean {
+  return existsSync("/run/.containerenv") || existsSync("/.dockerenv") || Boolean(process.env.container);
 }
