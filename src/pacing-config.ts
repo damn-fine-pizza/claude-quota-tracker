@@ -32,3 +32,37 @@ export function loadPacingConfig(path: string = CONFIG_PATH): PacingConfig {
     return DEFAULT_PACING_CONFIG;
   }
 }
+
+export function num(v: unknown, current: number, min: number): number {
+  if (v === undefined) return current;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < min) throw new Error("invalid number");
+  return v;
+}
+export function bool(v: unknown, current: boolean): boolean {
+  if (v === undefined) return current;
+  if (typeof v !== "boolean") throw new Error("invalid boolean");
+  return v;
+}
+export function obj(v: unknown): Record<string, unknown> {
+  if (v === undefined) return {};
+  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new Error("expected an object");
+  return v as Record<string, unknown>;
+}
+
+/**
+ * Merges a partial patch onto the CURRENT full config (not just defaults), so
+ * an unspecified field is never wiped — shared by the dashboard's /api/settings
+ * and the set_pacing_config MCP tool, so the two can never disagree on what's valid.
+ */
+export function mergePacingPatch(current: PacingConfig, patch: unknown): PacingConfig {
+  const p = obj(patch);
+  return {
+    enabled: bool(p.enabled, current.enabled),
+    slackPct: num(p.slackPct, current.slackPct, 0),
+    sessionWindowHours: num(p.sessionWindowHours, current.sessionWindowHours, 0.1),
+    weeklyWindowHours: num(p.weeklyWindowHours, current.weeklyWindowHours, 0.1),
+    continuousEnabled: bool(p.continuousEnabled, current.continuousEnabled),
+    deadlineSafetyMinutes: num(p.deadlineSafetyMinutes, current.deadlineSafetyMinutes, 0),
+    adaptiveMinSamples: num(p.adaptiveMinSamples, current.adaptiveMinSamples, 1),
+  };
+}

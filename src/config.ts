@@ -204,10 +204,11 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
 /**
  * Patch top-level sections of config.json in place: read-modify-write so user
  * keys we don't know about survive, tmp+rename so a concurrent loadConfig
- * never sees a half-written file.
+ * never sees a half-written file. `pacing` is a legitimate config.json
+ * section too (see pacing-config.ts) even though it isn't modeled in `Config`.
  */
 export function saveConfigPatch(
-  patch: Partial<Record<keyof Config, unknown>>,
+  patch: Partial<Record<keyof Config | "pacing", unknown>>,
   path: string = CONFIG_PATH,
 ): void {
   let raw: Record<string, unknown> = {};
