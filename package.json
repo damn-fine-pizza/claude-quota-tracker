@@ -1,6 +1,6 @@
 {
   "name": "quota-tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Track Claude usage, forecast burn rate, and schedule Claude Code work against 5-hour and weekly quota budgets.",
   "license": "MIT",
@@ -9,7 +9,8 @@
   "repository": { "type": "git", "url": "https://github.com/damn-fine-pizza/claude-quota-tracker.git" },
   "keywords": ["claude", "claude-code", "quota", "scheduler", "mcp", "linux", "systemd", "launchd"],
   "scripts": {
-    "build": "tsc",
+    "prepare": "node scripts/generate-version.mjs",
+    "build": "node scripts/generate-version.mjs && tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "setup": "bash scripts/setup.sh",
@@ -19,10 +20,15 @@
     "enqueue": "node dist/enqueue.js",
     "executor": "node dist/executor.js",
     "paced-executor": "node dist/paced-executor.js",
-    "mcp": "node dist/mcp-server.js"
+    "mcp": "node dist/mcp-server.js",
+    "mcp-http": "node dist/mcp-http.js"
   },
   "engines": {
     "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
