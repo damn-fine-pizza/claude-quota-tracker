@@ -2,14 +2,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { formatDoctorReport, type DoctorCheck, type DoctorReport } from "../src/doctor.js";
+import type { DoctorCheck, DoctorReport } from "../src/doctor.js";
 
-// Isolated QUOTA_TRACKER_HOME, set before config.js is first imported by
-// doctor.js — never the real ~/.quota-tracker or this repo's own dev data/.
+// Isolated QUOTA_TRACKER_HOME + HOME, set before config.js/install.js is first
+// imported by doctor.js — never the real ~/.quota-tracker, ~/.local/bin, or
+// this repo's own dev data/.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-doctor-"));
 process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.HOME = homeDir;
 
-const { runDoctorChecks } = await import("../src/doctor.js");
+const { formatDoctorReport, runDoctorChecks } = await import("../src/doctor.js");
 
 // Real Claude CLI checks (when `claude` is on PATH) can take several seconds;
 // run the full check set once and assert against the shared result rather

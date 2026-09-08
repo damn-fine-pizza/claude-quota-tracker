@@ -1,8 +1,20 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { checkForUpdate, resolveSourceRepo, runUpdate, type ExecFn, type ExecResult } from "../src/update.js";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import type { ExecFn, ExecResult } from "../src/update.js";
+
+// Isolated QUOTA_TRACKER_HOME, set before install.js/update.js is first
+// imported — never the real ~/.quota-tracker, which may hold a genuine
+// install-source.json on any machine that has actually run `quota install`.
+const homeDir = mkdtempSync(join(tmpdir(), "qt-update-home-"));
+process.env.QUOTA_TRACKER_HOME = homeDir;
+
+const { checkForUpdate, resolveSourceRepo, runUpdate } = await import("../src/update.js");
+
+afterAll(() => {
+  rmSync(homeDir, { recursive: true, force: true });
+});
 
 const dirs: string[] = [];
 function fakeRepo(): string {

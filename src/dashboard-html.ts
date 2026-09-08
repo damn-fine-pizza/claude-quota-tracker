@@ -50,7 +50,7 @@ function kpi(label,val){ return '<div class="kcard"><div class="klabel">'+label+
 
 function renderModels(md){
   var totals = md.totals||[];
-  if(!totals.length){ el('models').innerHTML = empty('no usage data yet (fills in after quota ingest or poll)'); el('tokcat').innerHTML=''; return; }
+  if(!totals.length){ el('models').innerHTML = empty('no usage data yet (fills in after claude-quota ingest or poll)'); el('tokcat').innerHTML=''; return; }
   // Bar length by ACTIVE tokens (input+output+cache-create); cache_read is huge
   // and would otherwise flatten every bar to the same length.
   var maxActive = Math.max.apply(null, totals.map(function(t){return t.activeTokens;}).concat([1]));

@@ -45,11 +45,11 @@ a SQLite file on your machine.
   state. Self-contained inline SVG; opens with one menubar click.
 - **🧩 Claude Code plugin** — a skill + `UserPromptSubmit` hook so Claude itself
   becomes quota-aware and can offer to defer heavy work to the night queue.
-- **🔌 MCP, two ways** — `quota mcp` (stdio, one process per client, unchanged)
-  and `quota mcp-http` (local Streamable HTTP on `127.0.0.1:47601/mcp`, one
+- **🔌 MCP, two ways** — `claude-quota mcp` (stdio, one process per client, unchanged)
+  and `claude-quota mcp-http` (local Streamable HTTP on `127.0.0.1:47601/mcp`, one
   persistent server multiple clients can share). Same tools, same
   authorization rules either way — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md).
-- **🩺 Runtime tooling** — `quota version`, `quota doctor`, and `quota update`
+- **🩺 Runtime tooling** — `claude-quota version`, `claude-quota doctor`, and `claude-quota update`
   make the installed runtime self-describing, diagnosable, and upgradable
   without ever touching a client's `.mcp.json`.
 
@@ -57,7 +57,7 @@ a SQLite file on your machine.
 
 ## Screenshots
 
-**`quota status`** — current windows, forecast, and 7-day totals:
+**`claude-quota status`** — current windows, forecast, and 7-day totals:
 
 ```text
 Session (5h): 39%  → ~58% by reset · resets Jun 13 1:40 AM
@@ -96,7 +96,7 @@ Open Dashboard
 - *(optional, macOS)* [SwiftBar](https://swiftbar.app) for the menubar
   plugin — installed automatically by `setup.sh` if Homebrew is present
 
-Run `quota doctor` any time to check what's available/missing in your
+Run `claude-quota doctor` any time to check what's available/missing in your
 specific environment — a missing systemd session or desktop helper is always
 a warning, never a hard failure.
 
@@ -112,16 +112,16 @@ bash scripts/setup.sh
 ```
 
 `setup.sh` compiles the project, installs a tiny launcher to
-`~/.local/bin/quota`, and registers a native scheduler when one is available
+`~/.local/bin/claude-quota`, and registers a native scheduler when one is available
 (a launchd agent on macOS, a `systemd --user` timer on Linux) that polls
 every 5 minutes; on Linux without systemd (or in a container/Distrobox),
 install completes without a background scheduler and prints the portable
-`quota daemon` fallback command instead — see
+`claude-quota daemon` fallback command instead — see
 [`docs/LINUX.md`](docs/LINUX.md). Config and data live in
 `~/.quota-tracker/`.
 
-To remove: `quota uninstall` (your data is preserved). To update an existing
-install without touching your MCP client config: `quota update` — see
+To remove: `claude-quota uninstall` (your data is preserved). To update an existing
+install without touching your MCP client config: `claude-quota update` — see
 [`docs/UPDATING.md`](docs/UPDATING.md).
 
 > Why a launcher and not a single binary? An ad-hoc-signed Node SEA binary gets
@@ -134,18 +134,18 @@ install without touching your MCP client config: `quota update` — see
 ## Usage
 
 ```bash
-quota status                 # current windows, forecast, 7-day totals (--json available)
-quota tasks                  # the night queue + recent runs
-quota dashboard --open       # open the web dashboard (idempotent)
+claude-quota status                 # current windows, forecast, 7-day totals (--json available)
+claude-quota tasks                  # the night queue + recent runs
+claude-quota dashboard --open       # open the web dashboard (idempotent)
 
 # Queue a heavy task to run unattended at the quietest night hour:
-quota enqueue --night --prompt "..." --size m --perm read-only
+claude-quota enqueue --night --prompt "..." --size m --perm read-only
 
 # Run a destructive/urgent task manually, while you watch:
-quota executor --task <id>
+claude-quota executor --task <id>
 
-quota version                # runtime/version info (--json available)
-quota doctor                 # diagnose install, MCP, scheduler, platform integration
+claude-quota version                # runtime/version info (--json available)
+claude-quota doctor                 # diagnose install, MCP, scheduler, platform integration
 ```
 
 `--perm` triages how the task may run unattended:
@@ -164,7 +164,7 @@ few days of history exist, targets the lowest-burn hour of the window.
 - **The machine must be awake.** launchd's `StartInterval` does not fire (or wake
   the Mac) during sleep, so a sleeping Mac runs nothing. Keep it awake for the
   window, e.g. `sudo pmset repeat wake MTWRFSU 01:55:00` (wake before the floor)
-  or `caffeinate -s` while plugged in. `quota uninstall` doesn't touch pmset.
+  or `caffeinate -s` while plugged in. `claude-quota uninstall` doesn't touch pmset.
 - **The session window throttles throughput.** Running `claude -p` burns your 5h
   session window, and execution pauses when it crosses `executor.sessionGuardPct`
   (default 80%). So one night fills roughly one or two session windows' worth of
@@ -186,7 +186,7 @@ This repo is also a Claude Code marketplace (`.claude-plugin/marketplace.json`):
 ```
 
 It installs a **skill** (so Claude can read your usage and defer heavy work via
-the `quota` CLI) and a **`UserPromptSubmit` hook** that nudges Claude when your
+the `claude-quota` CLI) and a **`UserPromptSubmit` hook** that nudges Claude when your
 session window is filling. The plugin is the Claude integration only — you still
 run `bash scripts/setup.sh` once to install the CLI/daemon.
 
@@ -199,7 +199,7 @@ claude -p "/usage" ──poll(5m)──▶ window_readings ──▶ forecast �
                                         │
 ~/.claude/projects/*.jsonl ─ingest──▶ usage_events ─┐
                                                      ├──▶ dashboard
-quota enqueue ──▶ tasks ──night executor──▶ task_runs┘
+      enqueue ──▶ tasks ──night executor──▶ task_runs┘
 ```
 
 - **Minimal runtime dependencies.** Everything except the MCP server is the
@@ -237,9 +237,9 @@ quota enqueue ──▶ tasks ──night executor──▶ task_runs┘
 - `ingest` — `extraRoots` (extra session-log roots for custom harnesses; `~/`
   expands to `$HOME`)
 - `mcp.http` — `enabled`, `host` (default `127.0.0.1`), `port` (default
-  `47601`) for `quota mcp-http` — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)
+  `47601`) for `claude-quota mcp-http` — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)
 - `update` — `repository` (default `damn-fine-pizza/claude-quota-tracker`),
-  `channel` for `quota update --check` — see
+  `channel` for `claude-quota update --check` — see
   [`docs/UPDATING.md`](docs/UPDATING.md)
 
 ---
@@ -251,7 +251,7 @@ your local `~/.claude/projects/*.jsonl` session logs, and writes a SQLite file
 under `~/.quota-tracker/`. Token stats reflect Claude Code usage only (not
 claude.ai / the web app). The MCP HTTP transport only ever binds to
 localhost. Beyond the `claude` CLI itself, the only network call this
-project's own code makes is `quota update --check`, which queries the
+project's own code makes is `claude-quota update --check`, which queries the
 GitHub Releases API for the configured repository — nothing else reaches
 the network.
 
@@ -261,7 +261,7 @@ the network.
 
 ```bash
 npm run build        # tsc → dist/
-npm test             # vitest (179 tests)
+npm test             # vitest (182 tests)
 npm run typecheck
 ```
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Bake the `quota` single-executable binary (Node SEA).
+# Bake the `claude-quota` single-executable binary (Node SEA).
 # Homebrew's node is a stub linking shared libnode and cannot host a SEA blob,
 # so the official nodejs.org binary (static libnode) is downloaded and cached.
 set -euo pipefail
@@ -27,15 +27,15 @@ echo "[4/6] generate SEA blob"
 "$NODE_BASE" --experimental-sea-config sea-config.json
 
 echo "[5/6] inject into node binary copy"
-rm -f build/quota
-cp "$NODE_BASE" build/quota
-chmod u+w build/quota
-codesign --remove-signature build/quota
-npx postject build/quota NODE_SEA_BLOB build/sea-prep.blob \
+rm -f build/claude-quota
+cp "$NODE_BASE" build/claude-quota
+chmod u+w build/claude-quota
+codesign --remove-signature build/claude-quota
+npx postject build/claude-quota NODE_SEA_BLOB build/sea-prep.blob \
   --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
   --macho-segment-name NODE_SEA
 
 echo "[6/6] ad-hoc codesign"
-codesign --sign - build/quota
+codesign --sign - build/claude-quota
 
-echo "done: $(pwd)/build/quota ($(du -h build/quota | cut -f1 | tr -d ' '))"
+echo "done: $(pwd)/build/claude-quota ($(du -h build/claude-quota | cut -f1 | tr -d ' '))"
