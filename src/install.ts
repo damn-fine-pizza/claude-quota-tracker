@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
-  chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync,
+  chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -10,19 +10,20 @@ import { normalizePlatform } from "./platform.js";
 
 const LABEL = "com.quota-tracker.poller";
 const LEGACY_LABEL = "com.jaejun.quota-tracker.poller";
-export const APP_HOME = join(homedir(), ".quota-tracker");
+export const APP_HOME = process.env.QUOTA_TRACKER_HOME ?? join(homedir(), ".quota-tracker");
 const APP_DATA = join(APP_HOME, "data");
 const APP_CONFIG = join(APP_HOME, "config.json");
 const APP_PLUGINS = join(APP_HOME, "plugins");
-const LIB_DIST = join(APP_HOME, "lib", "dist");
+const LIB_DIR = join(APP_HOME, "lib");
+const LIB_DIST = join(LIB_DIR, "dist");
 export const LAUNCHER = join(homedir(), ".local", "bin", "quota");
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
 const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "quota-tracker.service");
 const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "quota-tracker.timer");
 
 function plistPath(label: string = LABEL): string { return join(homedir(), "Library", "LaunchAgents", `${label}.plist`); }
-function run(bin: string, args: string[], opts: { allowFail?: boolean } = {}): string {
-  try { return execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
+function run(bin: string, args: string[], opts: { allowFail?: boolean; cwd?: string } = {}): string {
+  try { return execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], cwd: opts.cwd }); }
   catch (e) { if (opts.allowFail) return ""; throw e; }
 }
 export function commandWorks(bin: string, args: string[]): boolean { try { execFileSync(bin, args, { stdio: "ignore" }); return true; } catch { return false; } }
@@ -38,10 +39,32 @@ function recordInstallSource(srcDist: string): void {
   writeFileSync(INSTALL_SOURCE_PATH, JSON.stringify({ repoRoot, installedAt: new Date().toISOString() }, null, 2) + "\n");
 }
 
-function installRuntime(nodePath: string): void {
-  const srcDist = dirname(fileURLToPath(import.meta.url));
+export function installRuntime(nodePath: string, deps: { npmBin?: string; srcDist?: string } = {}): void {
+  const srcDist = deps.srcDist ?? dirname(fileURLToPath(import.meta.url));
   if (resolve(srcDist) !== resolve(LIB_DIST)) {
-    rmSync(LIB_DIST, { recursive: true, force: true }); mkdirSync(dirname(LIB_DIST), { recursive: true }); cpSync(srcDist, LIB_DIST, { recursive: true });
+    const repoRoot = dirname(srcDist);
+    const staging = `${LIB_DIR}.staging`;
+    rmSync(staging, { recursive: true, force: true });
+    mkdirSync(staging, { recursive: true });
+    cpSync(srcDist, join(staging, "dist"), { recursive: true });
+
+    const pkgPath = join(repoRoot, "package.json");
+    const lockPath = join(repoRoot, "package-lock.json");
+    if (existsSync(pkgPath) && existsSync(lockPath)) {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { dependencies?: Record<string, string> };
+      if (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) {
+        copyFileSync(pkgPath, join(staging, "package.json"));
+        copyFileSync(lockPath, join(staging, "package-lock.json"));
+        // Runtime deps (e.g. the MCP SDK) live next to dist/, mirroring the repo
+        // layout, so Node's resolution finds them from the installed cli.js too —
+        // staged first so a failed/offline npm ci never clobbers a working install.
+        run(deps.npmBin ?? "npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: staging });
+        console.log(`✓ runtime dependencies → ${join(staging, "node_modules")}`);
+      }
+    }
+
+    rmSync(LIB_DIR, { recursive: true, force: true });
+    renameSync(staging, LIB_DIR);
     console.log(`✓ runtime → ${LIB_DIST}`);
     recordInstallSource(srcDist);
   }
@@ -91,8 +114,8 @@ function installSwiftBar(): void {
   else if (resolve(current) !== resolve(pluginDir)) { const link = join(current, "usage.1m.sh"); if (!existsSync(link)) copyFileSync(plugin, link); chmodSync(link, 0o755); }
 }
 
-export async function install(): Promise<void> {
-  const nodePath = resolveNodePath(); installRuntime(nodePath); installHome();
+export async function install(deps: { npmBin?: string; srcDist?: string } = {}): Promise<void> {
+  const nodePath = resolveNodePath(); installRuntime(nodePath, deps); installHome();
   const platform = normalizePlatform();
   if (platform === "darwin") { installLaunchd(nodePath); installSwiftBar(); }
   else if (platform === "linux") {

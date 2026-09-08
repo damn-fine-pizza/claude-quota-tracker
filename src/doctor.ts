@@ -1,11 +1,8 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CLAUDE_PROJECTS_DIR, CONFIG_PATH, DATA_DIR, DB_PATH, loadConfig, PROJECT_ROOT } from "./config.js";
 import { APP_HOME, commandWorks, LAUNCHER, systemdUsable } from "./install.js";
-import { createMcpServer } from "./mcp/server.js";
 import { detectContainerEnvironment, isLoopbackHost, normalizePlatform } from "./platform.js";
 import { ClaudeProvider } from "./providers/claude.js";
 import { Store } from "./store.js";
@@ -26,6 +23,9 @@ export interface DoctorReport {
 }
 
 async function checkMcpStdio(): Promise<string> {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+  const { createMcpServer } = await import("./mcp/server.js");
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer();
   const client = new Client({ name: "quota-doctor", version: PACKAGE_VERSION });

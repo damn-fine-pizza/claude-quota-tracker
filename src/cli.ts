@@ -8,7 +8,6 @@ import { renderMenubar } from "./menubar.js";
 import { pollOnce } from "./poller.js";
 import { printHint, printStatus, printTasks } from "./report.js";
 import { runPacedOnce } from "./paced-executor.js";
-import { startMcpServer } from "./mcp-server.js";
 import { getRuntimeInfo } from "./version.js";
 
 const HELP = `quota — Claude quota tracker & quota-aware task orchestrator
@@ -68,7 +67,10 @@ export async function main(argv: string[]): Promise<void> {
     case "paced-executor": {
       const ok = await runPacedOnce(); process.exitCode = ok ? 0 : 1; return;
     }
-    case "mcp": return startMcpServer();
+    case "mcp": {
+      const { startMcpServer } = await import("./mcp-server.js");
+      return startMcpServer();
+    }
     case "mcp-http": {
       const { startMcpHttpServer } = await import("./mcp-http.js");
       await startMcpHttpServer();
