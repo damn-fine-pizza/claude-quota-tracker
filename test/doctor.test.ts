@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { DoctorCheck, DoctorReport } from "../src/doctor.js";
 
-// Isolated QUOTA_TRACKER_HOME + HOME, set before config.js/install.js is first
-// imported by doctor.js — never the real ~/.quota-tracker, ~/.local/bin, or
+// Isolated LLM_SQUEEZE_HOME + HOME, set before config.js/install.js is first
+// imported by doctor.js — never the real ~/.llm-squeeze, ~/.local/bin, or
 // this repo's own dev data/.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-doctor-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 process.env.HOME = homeDir;
 
 const { formatDoctorReport, runDoctorChecks } = await import("../src/doctor.js");
@@ -54,11 +54,11 @@ describe("formatDoctorReport", () => {
 
   it("reports OK when every check is ok or warn", () => {
     const report: DoctorReport = { ok: true, checks: [check("ok"), check("warn")] };
-    expect(formatDoctorReport(report)).toContain("quota doctor: OK");
+    expect(formatDoctorReport(report)).toContain("llm-squeeze doctor: OK");
   });
 
   it("reports FAILED when any check failed", () => {
     const report: DoctorReport = { ok: false, checks: [check("ok"), check("fail")] };
-    expect(formatDoctorReport(report)).toContain("quota doctor: FAILED");
+    expect(formatDoctorReport(report)).toContain("llm-squeeze doctor: FAILED");
   });
 });

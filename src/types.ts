@@ -10,11 +10,6 @@ export interface WindowReading {
   raw: string;
 }
 
-export interface UsageProvider {
-  id: string;
-  fetch(): Promise<WindowReading[]>;
-}
-
 /** Nominal duration of each window, used for linear-from-window-start fallback. */
 export const WINDOW_DURATION_MS: Record<WindowKey, number> = {
   session_5h: 5 * 60 * 60 * 1000,

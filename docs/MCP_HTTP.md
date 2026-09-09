@@ -1,15 +1,15 @@
 # MCP over Streamable HTTP
 
-`claude-quota mcp` (stdio) still works exactly as before — this adds a second,
+`llm-squeeze mcp` (stdio) still works exactly as before — this adds a second,
 persistent transport so **multiple MCP clients can share one running server**
-instead of each spawning its own `claude-quota mcp` process. Both transports run the
+instead of each spawning its own `llm-squeeze mcp` process. Both transports run the
 same tool registry (`src/mcp/tools.ts`); nothing about the tools themselves
 changes based on which one you use.
 
 ## Start the server
 
 ```bash
-claude-quota mcp-http
+llm-squeeze mcp-http
 ```
 
 or, from a source checkout:
@@ -22,9 +22,9 @@ npm run mcp-http
 By default it binds to `127.0.0.1:47601` and serves:
 
 - `POST /mcp` — the MCP Streamable HTTP endpoint (JSON-RPC 2.0)
-- `GET /health` — health/version JSON, for scripts and `claude-quota doctor`
+- `GET /health` — health/version JSON, for scripts and `llm-squeeze doctor`
 
-`claude-quota mcp-http` runs in the foreground. Use whatever supervisor fits your
+`llm-squeeze mcp-http` runs in the foreground. Use whatever supervisor fits your
 setup — `systemd --user`, `tmux`/`screen`, a container supervisor, or nothing
 at all if you just want it up for the current session.
 
@@ -35,7 +35,7 @@ Verified against the current Claude Code MCP docs (`code.claude.com/docs/en/mcp`
 ```json
 {
   "mcpServers": {
-    "claude-quota-tracker-http": {
+    "llm-squeeze-http": {
       "type": "http",
       "url": "http://127.0.0.1:47601/mcp"
     }
@@ -46,7 +46,7 @@ Verified against the current Claude Code MCP docs (`code.claude.com/docs/en/mcp`
 or via the CLI, once, at user scope so it's available in every project:
 
 ```bash
-claude mcp add --transport http claude-quota-tracker-http --scope user http://127.0.0.1:47601/mcp
+claude mcp add --transport http llm-squeeze-http --scope user http://127.0.0.1:47601/mcp
 ```
 
 This is a separate `mcpServers` entry from the stdio one — you can keep both
@@ -70,11 +70,11 @@ Streamable HTTP one.
 }
 ```
 
-`enabled` is informational for `claude-quota doctor` and future supervisor
-integrations — running `claude-quota mcp-http` directly always starts the server
+`enabled` is informational for `llm-squeeze doctor` and future supervisor
+integrations — running `llm-squeeze mcp-http` directly always starts the server
 regardless of this flag (it just prints a note if it's `false`).
 
-`claude-quota mcp-http` **always defaults to a loopback bind**. If you set `host` to
+`llm-squeeze mcp-http` **always defaults to a loopback bind**. If you set `host` to
 anything other than `127.0.0.1` / `localhost` / `::1`, it prints a loud
 warning on startup — nothing stops you, but you are explicitly exposing the
 server (including `run_now`, which executes Claude Code) beyond your own
@@ -85,7 +85,7 @@ machine, and no authentication is added on top.
 - **Loopback by default, never `0.0.0.0` implicitly.**
 - **No sessions.** The server runs the SDK's `StreamableHTTPServerTransport`
   in stateless mode (`sessionIdGenerator: undefined`) — every request is
-  self-contained, matching the fact that quota-tracker's tools don't carry any
+  self-contained, matching the fact that llm-squeeze's tools don't carry any
   server-side session state. This is spec-legal (session support is `MAY`,
   not `MUST`) and is the SDK's own documented pattern for a server with no
   server-initiated messages.
@@ -109,7 +109,7 @@ machine, and no authentication is added on top.
   call into the same tool handlers.
 - **Concurrency-safe by construction.** SQLite (WAL + busy timeout) already
   serializes concurrent claims across processes; `run_now` additionally
-  shares one execution lock (`claude-exec.lock`) with the automatic
+  shares one execution lock (`scheduler.lock`) with the automatic
   scheduler, so two clients calling `run_now` at once — or one calling it
   while the night queue is already running — can't both execute Claude
   concurrently. See `docs/MCP_SCHEDULER.md` for the scheduling model itself.
@@ -121,11 +121,11 @@ tool registry.
 
 ## Troubleshooting
 
-- `claude-quota doctor` checks whether the configured port is free, or already held
-  by a genuine quota-tracker instance (via `/health`) vs. something else.
+- `llm-squeeze doctor` checks whether the configured port is free, or already held
+  by a genuine llm-squeeze instance (via `/health`) vs. something else.
 - `curl http://127.0.0.1:47601/health` — should return
-  `{"ok":true,"name":"claude-quota-tracker",...}` while the server is running.
-- If a client reports a connection refused, confirm `claude-quota mcp-http` is
+  `{"ok":true,"name":"llm-squeeze",...}` while the server is running.
+- If a client reports a connection refused, confirm `llm-squeeze mcp-http` is
   actually running (it does not run automatically — nothing installs it as a
   service by default) and that the client's URL matches `mcp.http.host`/
   `mcp.http.port` in `config.json` (default `127.0.0.1:47601`).

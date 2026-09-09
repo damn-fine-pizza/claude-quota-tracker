@@ -2,8 +2,13 @@ import { PACKAGE_VERSION } from "./generated/version.js";
 
 export { PACKAGE_VERSION };
 
-/** Fixed product/server name — kept as its own constant (not read from package.json) since it's the MCP/health-endpoint identity contract, independent of npm packaging concerns. */
-export const PRODUCT_NAME = "claude-quota-tracker";
+/** Single public identity shared by the product, executable, package, and MCP server. */
+export const PRODUCT_NAME = "llm-squeeze";
+
+/** Canonical executable introduced by the product rename. */
+export const CLI_NAME = "llm-squeeze";
+
+export const MCP_SERVER_NAME = PRODUCT_NAME;
 
 export interface RuntimeInfo {
   name: string;

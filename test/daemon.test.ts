@@ -4,13 +4,13 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { acquireLock, releaseLock } from "../src/lockfile.js";
 
-// Isolated QUOTA_TRACKER_HOME, set before config.js is first imported — never
-// the real ~/.quota-tracker or this repo's own dev data/. A real pollOnce()
+// Isolated LLM_SQUEEZE_HOME, set before config.js is first imported — never
+// the real ~/.llm-squeeze or this repo's own dev data/. A real pollOnce()
 // (and so a real `claude -p "/usage"` call, when `claude` is on PATH) is
 // unavoidable here since runDaemon always polls once immediately; kept to
 // exactly one invocation across this file.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-daemon-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 
 const { runDaemon } = await import("../src/daemon.js");
 const { DATA_DIR } = await import("../src/config.js");

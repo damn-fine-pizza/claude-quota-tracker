@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import type { RunActuals, Task } from "./types.js";
+import type { ExecutionOutcome } from "./providers/contracts.js";
 
 /** Injectable exec seam (default wraps execFile) — tests pass a fake. */
 export type ExecFn = (
@@ -90,22 +91,17 @@ export function parseResultJson(stdout: string): RunActuals {
   };
 }
 
-export interface RunDeps {
+export interface ClaudeRunOptions {
   exec?: ExecFn;
   claudeBin?: string;
-}
-
-export interface RunOutcome {
-  actuals: RunActuals;
-  success: boolean;
 }
 
 export async function runClaudeTask(
   task: Task,
   cwd: string,
   timeoutMs: number,
-  deps: RunDeps = {},
-): Promise<RunOutcome> {
+  deps: ClaudeRunOptions = {},
+): Promise<ExecutionOutcome> {
   const exec = deps.exec ?? realExec;
   const bin = deps.claudeBin ?? "claude";
   const { stdout, stderr, exitCode, timedOut } = await exec(bin, buildClaudeArgs(task), {

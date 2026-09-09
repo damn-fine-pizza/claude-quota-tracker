@@ -1,8 +1,10 @@
-# Claude Quota Tracker
+# LLM Squeeze
 
-> A local-first Claude Code quota tracker and quota-aware task scheduler for
-> macOS and Linux. Track your Claude Max usage windows, never waste a quota
-> window, and schedule heavy work for the quiet hours.
+> Local quota-aware backlog and scheduler for coding agents.
+
+LLM Squeeze currently tracks Claude Code usage and schedules work on macOS and
+Linux. Its architecture is evolving toward multiple execution providers while
+keeping quota windows separate and decisions explainable.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#requirements)
@@ -10,10 +12,10 @@
 [![Runtime deps: 2](https://img.shields.io/badge/runtime%20deps-2-success.svg)](#how-it-works)
 [![For Claude Code](https://img.shields.io/badge/for-Claude%20Code-8A2BE2.svg)](https://claude.com/claude-code)
 
-![Claude Quota Tracker dashboard](docs/dashboard.png)
+![LLM Squeeze dashboard](docs/dashboard.png)
 
 Claude's Max plan gives you a **5-hour rolling session window** and **weekly
-windows** that quietly reset whether or not you used them. Quota Tracker keeps a
+windows** that quietly reset whether or not you used them. LLM Squeeze keeps a
 time series of your usage, forecasts whether you're on pace to fill (or waste) a
 window, nudges you when you're under-using, surfaces your **whole** token usage
 across every Claude Code project, and can run deferrable batch work **unattended
@@ -25,12 +27,11 @@ a SQLite file on your machine.
 
 ---
 
-## Fork-only features
+## Project lineage
 
-This is `damn-fine-pizza/claude-quota-tracker`, a fork of
-[`cooco119/claude-quota-tracker`](https://github.com/cooco119/claude-quota-tracker).
-Everything below is **not** in upstream (currently macOS-only, 0 runtime deps,
-Korean-language UI, no MCP scheduler at all):
+LLM Squeeze is an independently evolving fork. Git history, the GitHub fork
+network, license, and copyright preserve its provenance. Compared with its
+upstream base, this repository adds:
 
 - **Quota-aware MCP task scheduler + pacing governor** — submit/list/pause/
   resume/update/run tools, a linear per-window pacing model, and adaptive
@@ -38,19 +39,19 @@ Korean-language UI, no MCP scheduler at all):
 - **Linux support** — `systemd --user` timer, a portable no-systemd daemon,
   and Distrobox/container detection, all first-class (see
   [`docs/LINUX.md`](docs/LINUX.md)).
-- **MCP Streamable HTTP transport** (`claude-quota mcp-http`) alongside the
+- **MCP Streamable HTTP transport** (`llm-squeeze mcp-http`) alongside the
   original stdio transport, so multiple clients can share one running server
   (see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)).
-- **`claude-quota version` / `doctor` / `update`** — runtime tooling that
+- **`llm-squeeze version` / `doctor` / `update`** — runtime tooling that
   makes the install self-describing, diagnosable, and upgradable in place
   (see [`docs/UPDATING.md`](docs/UPDATING.md)).
 - **`update_task` / `set_pacing_config` MCP tools** and a dashboard
   **Settings** panel — change a queued task's priority/deadline or the
   pacing config after the fact, from the client or the browser, without
   re-submitting a task or hand-editing `config.json`.
-- **English-only UI** (upstream's dashboard/CLI are in Korean).
-- **Launcher renamed `claude-quota`** — upstream's `quota` collides with the
-  standard Unix disk-quota command.
+- **English-only UI**.
+- **One canonical `llm-squeeze` identity** for package, CLI, runtime paths,
+  services, plugin, and MCP server.
 - Built on the official `@modelcontextprotocol/sdk`, not a hand-rolled
   JSON-RPC implementation.
 
@@ -75,13 +76,13 @@ Korean-language UI, no MCP scheduler at all):
   GitHub-style contribution heatmap, estimate-vs-actual accuracy, and queue
   state, plus a **Settings** panel to view/edit pacing and auto-open — no
   file editing required. Self-contained inline SVG; opens with one menubar
-  click, or automatically when `claude-quota mcp`/`mcp-http` starts if
+  click, or automatically when `llm-squeeze mcp`/`mcp-http` starts if
   `dashboard.autoOpen` is enabled (opt-in, off by default). Auto-refreshes
   every 60s (toggleable, remembered per browser) without a page reload.
 - **🧩 Claude Code plugin** — a skill + `UserPromptSubmit` hook so Claude itself
   becomes quota-aware and can offer to defer heavy work to the night queue.
-- **🔌 MCP, two ways** — `claude-quota mcp` (stdio, one process per client, unchanged)
-  and `claude-quota mcp-http` (local Streamable HTTP on `127.0.0.1:47601/mcp`, one
+- **🔌 MCP, two ways** — `llm-squeeze mcp` (stdio, one process per client, unchanged)
+  and `llm-squeeze mcp-http` (local Streamable HTTP on `127.0.0.1:47601/mcp`, one
   persistent server multiple clients can share). Same tools, same
   authorization rules either way — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md).
   Tools cover the whole task lifecycle (submit / list / pause / resume /
@@ -89,7 +90,7 @@ Korean-language UI, no MCP scheduler at all):
   client, so priorities and pacing can change after the fact without
   re-submitting a task or touching a file — see
   [`docs/MCP_SCHEDULER.md`](docs/MCP_SCHEDULER.md).
-- **🩺 Runtime tooling** — `claude-quota version`, `claude-quota doctor`, and `claude-quota update`
+- **🩺 Runtime tooling** — `llm-squeeze version`, `llm-squeeze doctor`, and `llm-squeeze update`
   make the installed runtime self-describing, diagnosable, and upgradable
   without ever touching a client's `.mcp.json`.
 
@@ -97,7 +98,7 @@ Korean-language UI, no MCP scheduler at all):
 
 ## Screenshots
 
-**`claude-quota status`** — current windows, forecast, and 7-day totals:
+**`llm-squeeze status`** — current windows, forecast, and 7-day totals:
 
 ```text
 Session (5h): 39%  → ~58% by reset · resets Jun 13 1:40 AM
@@ -109,7 +110,7 @@ Week (Sonnet): 32%  → ~39% by reset · resets Jun 13 11:00 AM
 **Menubar** (SwiftBar) — glance + dropdown:
 
 ```text
-CQ 5h 39%
+LS 5h 39%
 ---
 Session (5h): 39% → ~58% by reset Jun 13 1:40 AM
 -- ▂▂▂▂▂▂▁▁▁▁▁▁▁▁▁▃
@@ -120,7 +121,7 @@ Open Dashboard
 
 > Dashboard and CLI output are in English. The only intentional non-English
 > text left in the repo is the Korean trigger-phrase examples in the Claude
-> Code plugin skill (`claude-plugin/skills/claude-quota-tracker/SKILL.md`), which
+> Code plugin skill (`claude-plugin/skills/llm-squeeze/SKILL.md`), which
 > exist so the skill also activates on requests typed in Korean.
 
 ---
@@ -136,7 +137,7 @@ Open Dashboard
 - *(optional, macOS)* [SwiftBar](https://swiftbar.app) for the menubar
   plugin — installed automatically by `setup.sh` if Homebrew is present
 
-Run `claude-quota doctor` any time to check what's available/missing in your
+Run `llm-squeeze doctor` any time to check what's available/missing in your
 specific environment — a missing systemd session or desktop helper is always
 a warning, never a hard failure.
 
@@ -145,23 +146,23 @@ a warning, never a hard failure.
 ## Install
 
 ```bash
-git clone https://github.com/damn-fine-pizza/claude-quota-tracker.git
-cd claude-quota-tracker
+git clone https://github.com/damn-fine-pizza/llm-squeeze.git
+cd llm-squeeze
 npm install
 bash scripts/setup.sh
 ```
 
 `setup.sh` compiles the project, installs a tiny launcher to
-`~/.local/bin/claude-quota`, and registers a native scheduler when one is available
+`~/.local/bin/llm-squeeze`, and registers a native scheduler when one is available
 (a launchd agent on macOS, a `systemd --user` timer on Linux) that polls
 every 5 minutes; on Linux without systemd (or in a container/Distrobox),
 install completes without a background scheduler and prints the portable
-`claude-quota daemon` fallback command instead — see
+`llm-squeeze daemon` fallback command instead — see
 [`docs/LINUX.md`](docs/LINUX.md). Config and data live in
-`~/.quota-tracker/`.
+`~/.llm-squeeze/`.
 
-To remove: `claude-quota uninstall` (your data is preserved). To update an existing
-install without touching your MCP client config: `claude-quota update` — see
+To remove: `llm-squeeze uninstall` (your data is preserved). To update an existing
+install without touching your MCP client config: `llm-squeeze update` — see
 [`docs/UPDATING.md`](docs/UPDATING.md).
 
 > Why a launcher and not a single binary? An ad-hoc-signed Node SEA binary gets
@@ -174,18 +175,18 @@ install without touching your MCP client config: `claude-quota update` — see
 ## Usage
 
 ```bash
-claude-quota status                 # current windows, forecast, 7-day totals (--json available)
-claude-quota tasks                  # the night queue + recent runs
-claude-quota dashboard --open       # open the web dashboard (idempotent)
+llm-squeeze status                 # current windows, forecast, 7-day totals (--json available)
+llm-squeeze tasks                  # the night queue + recent runs
+llm-squeeze dashboard --open       # open the web dashboard (idempotent)
 
 # Queue a heavy task to run unattended at the quietest night hour:
-claude-quota enqueue --night --prompt "..." --size m --perm read-only
+llm-squeeze enqueue --night --prompt "..." --size m --perm read-only
 
 # Run a destructive/urgent task manually, while you watch:
-claude-quota executor --task <id>
+llm-squeeze executor --task <id>
 
-claude-quota version                # runtime/version info (--json available)
-claude-quota doctor                 # diagnose install, MCP, scheduler, platform integration
+llm-squeeze version                # runtime/version info (--json available)
+llm-squeeze doctor                 # diagnose install, MCP, scheduler, platform integration
 ```
 
 `--perm` triages how the task may run unattended:
@@ -204,7 +205,7 @@ few days of history exist, targets the lowest-burn hour of the window.
 - **The machine must be awake.** launchd's `StartInterval` does not fire (or wake
   the Mac) during sleep, so a sleeping Mac runs nothing. Keep it awake for the
   window, e.g. `sudo pmset repeat wake MTWRFSU 01:55:00` (wake before the floor)
-  or `caffeinate -s` while plugged in. `claude-quota uninstall` doesn't touch pmset.
+  or `caffeinate -s` while plugged in. `llm-squeeze uninstall` doesn't touch pmset.
 - **The session window throttles throughput.** Running `claude -p` burns your 5h
   session window, and execution pauses when it crosses `executor.sessionGuardPct`
   (default 80%). So one night fills roughly one or two session windows' worth of
@@ -221,12 +222,12 @@ few days of history exist, targets the lowest-burn hour of the window.
 This repo is also a Claude Code marketplace (`.claude-plugin/marketplace.json`):
 
 ```text
-/plugin marketplace add damn-fine-pizza/claude-quota-tracker
-/plugin install claude-quota-tracker@claude-quota-tracker-marketplace
+/plugin marketplace add damn-fine-pizza/llm-squeeze
+/plugin install llm-squeeze@llm-squeeze-marketplace
 ```
 
 It installs a **skill** (so Claude can read your usage and defer heavy work via
-the `claude-quota` CLI) and a **`UserPromptSubmit` hook** that nudges Claude when your
+the `llm-squeeze` CLI) and a **`UserPromptSubmit` hook** that nudges Claude when your
 session window is filling. The plugin is the Claude integration only — you still
 run `bash scripts/setup.sh` once to install the CLI/daemon.
 
@@ -267,7 +268,7 @@ claude -p "/usage" ──poll(5m)──▶ window_readings ──▶ forecast �
 
 ## Configuration
 
-`~/.quota-tracker/config.json` (see [`config.example.json`](config.example.json)):
+`~/.llm-squeeze/config.json` (see [`config.example.json`](config.example.json)):
 
 - `notify` — nudge modes, thresholds, quiet hours, cooldown
 - `nightWindow` — `start`/`end` (local wall-clock) + a one-time confirmation
@@ -279,27 +280,27 @@ claude -p "/usage" ──poll(5m)──▶ window_readings ──▶ forecast �
   dashboard's Settings panel or the `set_pacing_config` MCP tool, instead of
   by hand.
 - `dashboard` — `port` (default 47600), `idleShutdownMin`, `autoOpen`
-  (default `false` — open the dashboard automatically when `claude-quota
+  (default `false` — open the dashboard automatically when `llm-squeeze
   mcp`/`mcp-http` starts, if it isn't already running). `autoOpen` is also
   editable from the Settings panel.
 - `ingest` — `extraRoots` (extra session-log roots for custom harnesses; `~/`
   expands to `$HOME`)
 - `mcp.http` — `enabled`, `host` (default `127.0.0.1`), `port` (default
-  `47601`) for `claude-quota mcp-http` — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)
-- `update` — `repository` (default `damn-fine-pizza/claude-quota-tracker`),
-  `channel` for `claude-quota update --check` — see
+  `47601`) for `llm-squeeze mcp-http` — see [`docs/MCP_HTTP.md`](docs/MCP_HTTP.md)
+- `update` — `repository` (default `damn-fine-pizza/llm-squeeze`),
+  `channel` for `llm-squeeze update --check` — see
   [`docs/UPDATING.md`](docs/UPDATING.md)
 
 ---
 
 ## Privacy
 
-Everything stays on your machine. Quota Tracker reads `claude -p "/usage"` and
+Everything stays on your machine. LLM Squeeze reads `claude -p "/usage"` and
 your local `~/.claude/projects/*.jsonl` session logs, and writes a SQLite file
-under `~/.quota-tracker/`. Token stats reflect Claude Code usage only (not
+under `~/.llm-squeeze/`. Token stats reflect Claude Code usage only (not
 claude.ai / the web app). The MCP HTTP transport only ever binds to
 localhost. Beyond the `claude` CLI itself, the only network call this
-project's own code makes is `claude-quota update --check`, which queries the
+project's own code makes is `llm-squeeze update --check`, which queries the
 GitHub Releases API for the configured repository — nothing else reaches
 the network.
 

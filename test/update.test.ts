@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import type { ExecFn, ExecResult } from "../src/update.js";
 
-// Isolated QUOTA_TRACKER_HOME, set before install.js/update.js is first
-// imported — never the real ~/.quota-tracker, which may hold a genuine
+// Isolated LLM_SQUEEZE_HOME, set before install.js/update.js is first
+// imported — never the real ~/.llm-squeeze, which may hold a genuine
 // install-source.json on any machine that has actually run `quota install`.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-update-home-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 
 const { checkForUpdate, resolveSourceRepo, runUpdate } = await import("../src/update.js");
 
@@ -17,11 +17,11 @@ afterAll(() => {
 });
 
 const dirs: string[] = [];
-function fakeRepo(): string {
+function fakeRepo(packageName = "llm-squeeze"): string {
   const dir = mkdtempSync(join(tmpdir(), "qt-update-repo-"));
   dirs.push(dir);
   mkdirSync(join(dir, ".git"));
-  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "claude-quota-tracker" }));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: packageName }));
   return dir;
 }
 afterEach(() => {
@@ -40,6 +40,10 @@ describe("resolveSourceRepo", () => {
     const dir = mkdtempSync(join(tmpdir(), "qt-update-notrepo-"));
     dirs.push(dir);
     expect(resolveSourceRepo(dir)).toBeNull();
+  });
+
+  it("rejects a git checkout with a different package identity", () => {
+    expect(resolveSourceRepo(fakeRepo("another-package"))).toBeNull();
   });
 });
 

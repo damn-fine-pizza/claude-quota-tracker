@@ -73,7 +73,7 @@ export interface McpConfig {
 }
 
 export interface UpdateConfig {
-  /** "owner/repo" queried by `claude-quota update --check`. Never the upstream fork. */
+  /** "owner/repo" queried by `llm-squeeze update --check`. Never the upstream fork. */
   repository: string;
   channel: string;
 }
@@ -148,7 +148,7 @@ export const DEFAULT_CONFIG: Config = {
     http: { enabled: false, host: "127.0.0.1", port: 47601 },
   },
   update: {
-    repository: "damn-fine-pizza/claude-quota-tracker",
+    repository: "damn-fine-pizza/llm-squeeze",
     channel: "stable",
   },
   plan: { name: null },
@@ -156,12 +156,12 @@ export const DEFAULT_CONFIG: Config = {
 
 /**
  * Root for config.json and data/. Dev runs (node dist/*.js) stay repo-relative;
- * the baked `quota` binary uses ~/.quota-tracker. QUOTA_TRACKER_HOME overrides both.
+ * the baked binary uses ~/.llm-squeeze. LLM_SQUEEZE_HOME overrides both.
  */
 export const PROJECT_ROOT =
-  process.env.QUOTA_TRACKER_HOME ??
+  process.env.LLM_SQUEEZE_HOME ??
   (isSea()
-    ? join(homedir(), ".quota-tracker")
+    ? join(homedir(), ".llm-squeeze")
     : join(dirname(fileURLToPath(import.meta.url)), ".."));
 
 /** Claude Code session logs — source for total-usage ingestion. */

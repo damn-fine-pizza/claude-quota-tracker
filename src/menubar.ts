@@ -7,6 +7,7 @@ import { exhaustionEpochMs, type Forecast } from "./forecast.js";
 import { isSea } from "./sea.js";
 import { Store, type HistoryPoint } from "./store.js";
 import { WINDOW_DURATION_MS, type WindowKey, type WindowReading } from "./types.js";
+import { CLI_NAME } from "./version.js";
 
 interface LatestWindow extends WindowReading {
   forecast: Forecast | null;
@@ -71,7 +72,7 @@ function urgency(w: LatestWindow, nowMs: number): number {
 /** Render SwiftBar plugin output. Reads latest.json + sqlite history only. */
 export function renderMenubar(nowMs: number = Date.now()): string {
   if (!existsSync(LATEST_JSON_PATH)) {
-    return "CQ —\n---\nquota-tracker: no data yet (run the poller)";
+    return "LS —\n---\nllm-squeeze: no data yet (run the poller)";
   }
   const latest = JSON.parse(readFileSync(LATEST_JSON_PATH, "utf8")) as {
     generatedAtMs: number;
@@ -79,12 +80,12 @@ export function renderMenubar(nowMs: number = Date.now()): string {
   };
   const windows = latest.providers["claude"]?.windows ?? [];
   if (windows.length === 0) {
-    return "CQ ?\n---\nquota-tracker: latest.json has no windows";
+    return "LS ?\n---\nllm-squeeze: latest.json has no windows";
   }
 
   const top = [...windows].sort((a, b) => urgency(b, nowMs) - urgency(a, nowMs))[0];
   const lines: string[] = [];
-  lines.push(`CQ ${GLANCE_LABEL[top.windowKey]} ${top.pct ?? "?"}%`);
+  lines.push(`LS ${GLANCE_LABEL[top.windowKey]} ${top.pct ?? "?"}%`);
   lines.push("---");
 
   const store = new Store(DB_PATH);
@@ -118,9 +119,9 @@ export function renderMenubar(nowMs: number = Date.now()): string {
 
   const ageMin = Math.round((nowMs - latest.generatedAtMs) / 60000);
   lines.push("---");
-  // In the baked binary process.execPath IS the claude-quota binary; in dev it's
+  // In the baked binary process.execPath is the llm-squeeze binary; in dev it's
   // node (the menubar only runs from the binary, so this resolves correctly there).
-  const bin = isSea() ? process.execPath : join(homedir(), ".local", "bin", "claude-quota");
+  const bin = isSea() ? process.execPath : join(homedir(), ".local", "bin", CLI_NAME);
   lines.push(
     `Open Dashboard | bash="${bin}" param1=dashboard param2=--open terminal=false refresh=false`,
   );

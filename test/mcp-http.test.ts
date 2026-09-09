@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
-// QUOTA_TRACKER_HOME must be set before config.js (and anything importing it)
+// LLM_SQUEEZE_HOME must be set before config.js (and anything importing it)
 // is first evaluated, so every test in this file gets an isolated data dir —
-// never the real ~/.quota-tracker or this repo's own dev data/. vitest gives
+// never the real ~/.llm-squeeze or this repo's own dev data/. vitest gives
 // each test file its own module registry, so this only affects this file.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-mcp-http-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 
 const { startMcpHttpServer } = await import("../src/mcp-http.js");
 type McpHttpHandle = Awaited<ReturnType<typeof startMcpHttpServer>>;
@@ -54,7 +54,7 @@ describe("mcp-http", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
-    expect(body.name).toBe("claude-quota-tracker");
+    expect(body.name).toBe("llm-squeeze");
     expect(body.transport).toBe("streamable-http");
     expect(typeof body.pid).toBe("number");
     expect(typeof body.mcpProtocolVersion).toBe("string");
@@ -67,7 +67,7 @@ describe("mcp-http", () => {
     });
     expect(init.status).toBe(200);
     const initBody = (await readRpcJson(init)) as { result: { serverInfo: { name: string; version: string } } };
-    expect(initBody.result.serverInfo.name).toBe("claude-quota-tracker");
+    expect(initBody.result.serverInfo.name).toBe("llm-squeeze");
 
     const list = await rpc(server.url, { jsonrpc: "2.0", id: 2, method: "tools/list" });
     const listBody = (await readRpcJson(list)) as { result: { tools: Array<{ name: string }> } };

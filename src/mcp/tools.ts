@@ -25,7 +25,7 @@ function deadlineMs(v: string | number | null | undefined): number | null {
   throw new Error("deadline must be an ISO-8601 date/time or epoch milliseconds");
 }
 
-/** Registers all quota-tracker tools on a fresh McpServer. Shared verbatim by the stdio and HTTP transports. */
+/** Registers all llm-squeeze tools on a fresh McpServer. Shared verbatim by the stdio and HTTP transports. */
 export function registerTools(server: McpServer): void {
   mkdirSync(DATA_DIR, { recursive: true });
 

@@ -57,7 +57,7 @@ export function overview(store: Store, nowMs: number) {
   // Total usage (all Claude Code work) from ingested session logs.
   const usage = store.usageSummary(nowMs - 7 * DAY_MS, nowMs);
   // Cost/runs stay sourced from task_runs — usage_events has no cost, and runs
-  // count quota-tracker's own orchestrated tasks (a distinct, smaller number).
+  // count llm-squeeze's own orchestrated tasks (a distinct, smaller number).
   const k = store.runCostSummary(nowMs - 7 * DAY_MS, nowMs);
   return {
     generatedAtMs: latest?.generatedAtMs ?? null,

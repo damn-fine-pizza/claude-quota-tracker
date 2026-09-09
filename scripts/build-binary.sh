@@ -1,5 +1,5 @@
 #!/bin/bash
-# Bake the `claude-quota` single-executable binary (Node SEA).
+# Bake the canonical `llm-squeeze` single-executable binary (Node SEA).
 # Homebrew's node is a stub linking shared libnode and cannot host a SEA blob,
 # so the official nodejs.org binary (static libnode) is downloaded and cached.
 set -euo pipefail
@@ -27,15 +27,15 @@ echo "[4/6] generate SEA blob"
 "$NODE_BASE" --experimental-sea-config sea-config.json
 
 echo "[5/6] inject into node binary copy"
-rm -f build/claude-quota
-cp "$NODE_BASE" build/claude-quota
-chmod u+w build/claude-quota
-codesign --remove-signature build/claude-quota
-npx postject build/claude-quota NODE_SEA_BLOB build/sea-prep.blob \
+rm -f build/llm-squeeze
+cp "$NODE_BASE" build/llm-squeeze
+chmod u+w build/llm-squeeze
+codesign --remove-signature build/llm-squeeze
+npx postject build/llm-squeeze NODE_SEA_BLOB build/sea-prep.blob \
   --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
   --macho-segment-name NODE_SEA
 
 echo "[6/6] ad-hoc codesign"
-codesign --sign - build/claude-quota
+codesign --sign - build/llm-squeeze
 
-echo "done: $(pwd)/build/claude-quota ($(du -h build/claude-quota | cut -f1 | tr -d ' '))"
+echo "done: $(pwd)/build/llm-squeeze ($(du -h build/llm-squeeze | cut -f1 | tr -d ' '))"

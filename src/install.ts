@@ -7,22 +7,19 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_CONFIG, saveConfigPatch } from "./config.js";
 import { normalizePlatform } from "./platform.js";
+import { CLI_NAME } from "./version.js";
 
-const LABEL = "com.claude-quota-tracker.poller";
-const LEGACY_LABELS = ["com.quota-tracker.poller", "com.jaejun.quota-tracker.poller"];
-export const APP_HOME = process.env.QUOTA_TRACKER_HOME ?? join(homedir(), ".quota-tracker");
+const LABEL = "com.llm-squeeze.poller";
+export const APP_HOME = process.env.LLM_SQUEEZE_HOME ?? join(homedir(), ".llm-squeeze");
 const APP_DATA = join(APP_HOME, "data");
 const APP_CONFIG = join(APP_HOME, "config.json");
 const APP_PLUGINS = join(APP_HOME, "plugins");
 const LIB_DIR = join(APP_HOME, "lib");
 const LIB_DIST = join(LIB_DIR, "dist");
-export const LAUNCHER = join(homedir(), ".local", "bin", "claude-quota");
-const OLD_LAUNCHER = join(homedir(), ".local", "bin", "quota");
+export const LAUNCHER = join(homedir(), ".local", "bin", CLI_NAME);
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
-const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "claude-quota-tracker.service");
-const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "claude-quota-tracker.timer");
-const LEGACY_SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "quota-tracker.service");
-const LEGACY_SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "quota-tracker.timer");
+const SYSTEMD_SERVICE = join(SYSTEMD_USER_DIR, "llm-squeeze.service");
+const SYSTEMD_TIMER = join(SYSTEMD_USER_DIR, "llm-squeeze.timer");
 
 function plistPath(label: string = LABEL): string { return join(homedir(), "Library", "LaunchAgents", `${label}.plist`); }
 function run(bin: string, args: string[], opts: { allowFail?: boolean; cwd?: string } = {}): string {
@@ -72,24 +69,8 @@ export function installRuntime(nodePath: string, deps: { npmBin?: string; srcDis
     recordInstallSource(srcDist);
   }
   mkdirSync(dirname(LAUNCHER), { recursive: true });
-  writeFileSync(LAUNCHER, `#!/bin/sh\nexport QUOTA_TRACKER_HOME="\${QUOTA_TRACKER_HOME:-$HOME/.quota-tracker}"\nexec "${nodePath}" "${join(LIB_DIST, "cli.js")}" "$@"\n`);
+  writeFileSync(LAUNCHER, `#!/bin/sh\nexport LLM_SQUEEZE_HOME="\${LLM_SQUEEZE_HOME:-$HOME/.llm-squeeze}"\nexec "${nodePath}" "${join(LIB_DIST, "cli.js")}" "$@"\n`);
   chmodSync(LAUNCHER, 0o755); console.log(`✓ launcher → ${LAUNCHER}`);
-  removeStaleQuotaLauncher();
-}
-
-function removeStaleQuotaLauncher(): void {
-  // `quota` collides with the standard Unix disk-quota command (quota(1)); the
-  // launcher was renamed to claude-quota. Only remove our own old shim, never
-  // an unrelated file a user might have at this path.
-  if (!existsSync(OLD_LAUNCHER)) return;
-  try {
-    if (readFileSync(OLD_LAUNCHER, "utf8").includes("QUOTA_TRACKER_HOME")) {
-      rmSync(OLD_LAUNCHER, { force: true });
-      console.log(`✓ removed stale launcher → ${OLD_LAUNCHER} (renamed to claude-quota)`);
-    }
-  } catch {
-    // not ours or unreadable — leave it alone
-  }
 }
 function installHome(): void {
   mkdirSync(APP_DATA, { recursive: true });
@@ -102,8 +83,8 @@ function removeAgent(label: string): void {
 function installLaunchd(nodePath: string): void {
   mkdirSync(dirname(plistPath()), { recursive: true });
   const env = `${join(homedir(), ".local", "bin")}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`;
-  writeFileSync(plistPath(), `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>${LABEL}</string>\n<key>ProgramArguments</key><array><string>${nodePath}</string><string>${join(LIB_DIST, "cli.js")}</string><string>poll</string></array>\n<key>EnvironmentVariables</key><dict><key>PATH</key><string>${env}</string><key>QUOTA_TRACKER_HOME</key><string>${APP_HOME}</string></dict>\n<key>StartInterval</key><integer>300</integer><key>RunAtLoad</key><true/>\n<key>StandardOutPath</key><string>${join(APP_DATA, "poller.log")}</string><key>StandardErrorPath</key><string>${join(APP_DATA, "poller.err.log")}</string>\n</dict></plist>\n`);
-  const uid = process.getuid!(); for (const l of LEGACY_LABELS) removeAgent(l); run("launchctl", ["bootout", `gui/${uid}/${LABEL}`], { allowFail: true }); run("launchctl", ["bootstrap", `gui/${uid}`, plistPath()]);
+  writeFileSync(plistPath(), `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n<key>Label</key><string>${LABEL}</string>\n<key>ProgramArguments</key><array><string>${nodePath}</string><string>${join(LIB_DIST, "cli.js")}</string><string>poll</string></array>\n<key>EnvironmentVariables</key><dict><key>PATH</key><string>${env}</string><key>LLM_SQUEEZE_HOME</key><string>${APP_HOME}</string></dict>\n<key>StartInterval</key><integer>300</integer><key>RunAtLoad</key><true/>\n<key>StandardOutPath</key><string>${join(APP_DATA, "poller.log")}</string><key>StandardErrorPath</key><string>${join(APP_DATA, "poller.err.log")}</string>\n</dict></plist>\n`);
+  const uid = process.getuid!(); run("launchctl", ["bootout", `gui/${uid}/${LABEL}`], { allowFail: true }); run("launchctl", ["bootstrap", `gui/${uid}`, plistPath()]);
   console.log("✓ launchd poller installed");
 }
 export function systemdUsable(): boolean {
@@ -111,31 +92,18 @@ export function systemdUsable(): boolean {
 }
 function installSystemd(): boolean {
   if (!systemdUsable()) return false;
-  removeLegacySystemdUnits();
   mkdirSync(SYSTEMD_USER_DIR, { recursive: true });
-  writeFileSync(SYSTEMD_SERVICE, `[Unit]\nDescription=Claude quota tracker poll\n\n[Service]\nType=oneshot\nEnvironment=QUOTA_TRACKER_HOME=${APP_HOME}\nExecStart=${LAUNCHER} poll\n`);
-  writeFileSync(SYSTEMD_TIMER, `[Unit]\nDescription=Poll Claude quota every 5 minutes\n\n[Timer]\nOnBootSec=1min\nOnUnitActiveSec=5min\nPersistent=true\nUnit=claude-quota-tracker.service\n\n[Install]\nWantedBy=timers.target\n`);
-  run("systemctl", ["--user", "daemon-reload"]); run("systemctl", ["--user", "enable", "--now", "claude-quota-tracker.timer"]);
+  writeFileSync(SYSTEMD_SERVICE, `[Unit]\nDescription=LLM Squeeze quota poll\n\n[Service]\nType=oneshot\nEnvironment=LLM_SQUEEZE_HOME=${APP_HOME}\nExecStart=${LAUNCHER} poll\n`);
+  writeFileSync(SYSTEMD_TIMER, `[Unit]\nDescription=Poll Claude quota every 5 minutes\n\n[Timer]\nOnBootSec=1min\nOnUnitActiveSec=5min\nPersistent=true\nUnit=llm-squeeze.service\n\n[Install]\nWantedBy=timers.target\n`);
+  run("systemctl", ["--user", "daemon-reload"]); run("systemctl", ["--user", "enable", "--now", "llm-squeeze.timer"]);
   console.log("✓ systemd --user timer installed"); return true;
-}
-function removeLegacySystemdUnits(): void {
-  // Unit names were renamed quota-tracker -> claude-quota-tracker; clean up
-  // the old ones so an upgrade doesn't leave a second, orphaned timer.
-  if (!existsSync(LEGACY_SYSTEMD_SERVICE) && !existsSync(LEGACY_SYSTEMD_TIMER)) return;
-  run("systemctl", ["--user", "disable", "--now", "quota-tracker.timer"], { allowFail: true });
-  rmSync(LEGACY_SYSTEMD_SERVICE, { force: true });
-  rmSync(LEGACY_SYSTEMD_TIMER, { force: true });
-  run("systemctl", ["--user", "daemon-reload"], { allowFail: true });
-  console.log("✓ removed legacy quota-tracker.timer/.service (renamed to claude-quota-tracker)");
 }
 function uninstallSystemd(): void {
   if (commandWorks("systemctl", ["--user", "show-environment"])) {
-    run("systemctl", ["--user", "disable", "--now", "claude-quota-tracker.timer"], { allowFail: true });
-    run("systemctl", ["--user", "disable", "--now", "quota-tracker.timer"], { allowFail: true });
+    run("systemctl", ["--user", "disable", "--now", "llm-squeeze.timer"], { allowFail: true });
     run("systemctl", ["--user", "daemon-reload"], { allowFail: true });
   }
   rmSync(SYSTEMD_SERVICE, { force: true }); rmSync(SYSTEMD_TIMER, { force: true });
-  rmSync(LEGACY_SYSTEMD_SERVICE, { force: true }); rmSync(LEGACY_SYSTEMD_TIMER, { force: true });
 }
 function installSwiftBar(): void {
   const pluginDir = APP_PLUGINS; mkdirSync(pluginDir, { recursive: true }); const plugin = join(pluginDir, "usage.1m.sh");
@@ -154,17 +122,17 @@ export async function install(deps: { npmBin?: string; srcDist?: string } = {}):
   else if (platform === "linux") {
     if (!installSystemd()) {
       console.log("⚠ systemd --user unavailable; install completed without a background scheduler.");
-      console.log("  Run `claude-quota daemon` in any long-lived shell/supervisor (works in Distrobox/containers/no-init environments). ");
+      console.log(`  Run \`${CLI_NAME} daemon\` in any long-lived shell/supervisor (works in Distrobox/containers/no-init environments). `);
     }
   } else {
-    console.log("⚠ no native scheduler integration for this platform; use `claude-quota daemon`.");
+    console.log(`⚠ no native scheduler integration for this platform; use \`${CLI_NAME} daemon\`.`);
   }
   console.log(`✓ config: ${APP_CONFIG}`);
 }
 
 export async function uninstall(): Promise<void> {
   const platform = normalizePlatform();
-  if (platform === "darwin") { removeAgent(LABEL); for (const l of LEGACY_LABELS) removeAgent(l); }
+  if (platform === "darwin") removeAgent(LABEL);
   if (platform === "linux") uninstallSystemd();
   console.log(`Data preserved: ${APP_HOME}`);
   console.log(`Remove runtime manually: rm ${LAUNCHER}; rm -rf ${join(APP_HOME, "lib")}`);

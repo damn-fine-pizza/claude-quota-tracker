@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { executeTask, recoverStaleRunning } from "../src/executor.js";
+import { ClaudeExecutionBackend } from "../src/providers/index.js";
 import type { ExecFn } from "../src/runner.js";
 import { Store } from "../src/store.js";
 import type { GuardInput } from "../src/tasks.js";
@@ -24,6 +25,7 @@ const SUCCESS_JSON = JSON.stringify({
 
 const okExec: ExecFn = async () => ({ stdout: SUCCESS_JSON, stderr: "", exitCode: 0 });
 const failExec: ExecFn = async () => ({ stdout: "", stderr: "boom", exitCode: 1 });
+const backend = (exec: ExecFn) => new ClaudeExecutionBackend({ exec });
 
 function input(partial: Partial<TaskInput> = {}): TaskInput {
   return {
@@ -107,7 +109,7 @@ describe("executeTask", () => {
     const store = new Store(":memory:");
     store.enqueueTask(Date.now(), input());
     const task = store.claimNextTask(Date.now())!;
-    const ok = await executeTask(store, task, CONFIG, GUARD, { exec: okExec });
+    const ok = await executeTask(store, task, CONFIG, GUARD, { backend: backend(okExec) });
     expect(ok).toBe(true);
     const after = store.getTask(task.id)!;
     expect(after.status).toBe("done");
@@ -123,7 +125,7 @@ describe("executeTask", () => {
     store.enqueueTask(Date.now(), input());
     for (let attempt = 1; attempt <= CONFIG.executor.maxAttempts; attempt++) {
       const task = store.claimNextTask(Date.now())!;
-      const ok = await executeTask(store, task, CONFIG, GUARD, { exec: failExec });
+      const ok = await executeTask(store, task, CONFIG, GUARD, { backend: backend(failExec) });
       expect(ok).toBe(false);
       const status = store.getTask(task.id)!.status;
       expect(status).toBe(attempt < CONFIG.executor.maxAttempts ? "carried_over" : "failed");
@@ -144,7 +146,9 @@ describe("executeTask", () => {
       permissionClass: "write-scoped", permissionMode: "acceptEdits",
     }));
     const task = store.claimNextTask(Date.now())!;
-    const ok = await executeTask(store, task, CONFIG, GUARD, { exec });
+    const ok = await executeTask(store, task, CONFIG, GUARD, {
+      backend: backend(exec), commandExec: exec,
+    });
     expect(ok).toBe(false);
     expect(claudeCalled).toBe(false);
     expect(store.getTask(task.id)?.status).toBe("carried_over");
@@ -168,7 +172,9 @@ describe("executeTask", () => {
       }
       return { stdout: SUCCESS_JSON, stderr: "", exitCode: 0 };
     };
-    await executeTask(store, task, CONFIG, GUARD, { exec });
+    await executeTask(store, task, CONFIG, GUARD, {
+      backend: backend(exec), commandExec: exec,
+    });
     expect(runRowDuringWorktree).not.toBeNull();
     expect(runRowDuringWorktree!.pid).toBe(process.pid);
     expect(runRowDuringWorktree!.endedTs).toBeNull();
