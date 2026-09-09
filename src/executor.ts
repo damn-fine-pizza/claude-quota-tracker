@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -8,6 +8,9 @@ import {
 import { acquireLock, isPidAlive, releaseLock } from "./lockfile.js";
 import { sendMacNotification } from "./notify.js";
 import { createDefaultProviderRegistry, type ExecutionBackend } from "./providers/index.js";
+import {
+  CLAUDE_DEFAULT_PROFILE_ID, CLAUDE_PROVIDER_ID, profileCache, readLatestCache,
+} from "./latest-cache.js";
 import { addWorktree, type ExecFn } from "./runner.js";
 import { Store } from "./store.js";
 import {
@@ -43,20 +46,16 @@ function readLatest(nowMs: number): LatestSnapshot {
   const empty: GuardInput = {
     nowMs, sessionPct: null, sessionResetMs: null, weeklyPct: null, weeklyResetMs: null,
   };
-  if (!existsSync(LATEST_JSON_PATH)) return { generatedAtMs: null, guard: empty };
+  const latest = readLatestCache(LATEST_JSON_PATH);
+  if (!latest) return { generatedAtMs: null, guard: empty };
   try {
-    const j = JSON.parse(readFileSync(LATEST_JSON_PATH, "utf8")) as {
-      generatedAtMs: number;
-      providers: Record<string, { windows: Array<{
-        windowKey: string; pct: number | null; resetEpochMs: number | null;
-      }> }>;
-    };
-    const windows = j.providers["claude"]?.windows ?? [];
+    const profile = profileCache(latest, CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+    const windows = profile?.windows ?? [];
     const find = (key: string) => windows.find((w) => w.windowKey === key);
     const session = find("session_5h");
     const weekly = find("weekly_all");
     return {
-      generatedAtMs: j.generatedAtMs,
+      generatedAtMs: profile?.generatedAtMs ?? null,
       guard: {
         nowMs,
         sessionPct: session?.pct ?? null,
@@ -149,7 +148,8 @@ export async function executeTask(
   }
 
   const backend = deps.backend ?? createDefaultProviderRegistry()
-    .requireExecutionBackend("claude-cli");
+    .executionBackendFor(CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+  if (!backend) return failRun("execution backend unavailable for claude/claude-default");
   const { actuals, success } = await backend.execute({ task, cwd, timeoutMs });
   store.finishRun(runId, Date.now(), actuals);
   store.settleTask({

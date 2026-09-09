@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,20 +5,23 @@ import { DB_PATH, LATEST_JSON_PATH } from "./config.js";
 import { exhaustionEpochMs, type Forecast } from "./forecast.js";
 import { isSea } from "./sea.js";
 import { Store, type HistoryPoint } from "./store.js";
-import { WINDOW_DURATION_MS, type WindowKey, type WindowReading } from "./types.js";
+import type { WindowReading } from "./types.js";
 import { CLI_NAME } from "./version.js";
+import {
+  CLAUDE_DEFAULT_PROFILE_ID, CLAUDE_PROVIDER_ID, profileCache, readLatestCache,
+} from "./latest-cache.js";
 
 interface LatestWindow extends WindowReading {
   forecast: Forecast | null;
 }
 
 const SPARK_CHARS = "▁▂▃▄▅▆▇█";
-const GLANCE_LABEL: Record<WindowKey, string> = {
+const GLANCE_LABEL: Record<string, string> = {
   session_5h: "5h",
   weekly_all: "wk",
   weekly_sonnet: "son",
 };
-const FULL_LABEL: Record<WindowKey, string> = {
+const FULL_LABEL: Record<string, string> = {
   session_5h: "Session (5h)",
   weekly_all: "Week (all models)",
   weekly_sonnet: "Week (Sonnet)",
@@ -71,29 +73,27 @@ function urgency(w: LatestWindow, nowMs: number): number {
 
 /** Render SwiftBar plugin output. Reads latest.json + sqlite history only. */
 export function renderMenubar(nowMs: number = Date.now()): string {
-  if (!existsSync(LATEST_JSON_PATH)) {
+  const latest = readLatestCache(LATEST_JSON_PATH);
+  if (!latest) {
     return "LS —\n---\nllm-squeeze: no data yet (run the poller)";
   }
-  const latest = JSON.parse(readFileSync(LATEST_JSON_PATH, "utf8")) as {
-    generatedAtMs: number;
-    providers: Record<string, { windows: LatestWindow[] }>;
-  };
-  const windows = latest.providers["claude"]?.windows ?? [];
+  const profile = profileCache(latest, CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+  const windows = profile?.windows ?? [];
   if (windows.length === 0) {
     return "LS ?\n---\nllm-squeeze: latest.json has no windows";
   }
 
   const top = [...windows].sort((a, b) => urgency(b, nowMs) - urgency(a, nowMs))[0];
   const lines: string[] = [];
-  lines.push(`LS ${GLANCE_LABEL[top.windowKey]} ${top.pct ?? "?"}%`);
+  lines.push(`LS ${GLANCE_LABEL[top.windowKey] ?? top.name} ${top.value ?? "?"}${top.unit === "percent" ? "%" : ` ${top.unit}`}`);
   lines.push("---");
 
   const store = new Store(DB_PATH);
   try {
     for (const w of windows) {
-      const dur = WINDOW_DURATION_MS[w.windowKey];
-      const history = store.history("claude", w.windowKey, nowMs - dur);
-      const pct = w.pct === null ? "?" : `${w.pct}%`;
+      const history = w.durationMs !== null && w.unit === "percent"
+        ? store.history(profile!.providerId, w.windowKey, nowMs - w.durationMs) : [];
+      const pct = w.value === null ? "?" : `${w.value}${w.unit === "percent" ? "%" : ` ${w.unit}`}`;
       // Always pair the forecast with the actual reset time so "100% by 2:39"
       // reads against "resets 3:59".
       const resetStr = w.resetEpochMs === null ? "?" : fmtReset(w.resetEpochMs);
@@ -110,14 +110,15 @@ export function renderMenubar(nowMs: number = Date.now()): string {
           ? ` → 100% by ${fmtTime(eta)} · resets ${resetStr}`
           : ` → ~${Math.round(Math.min(100, w.forecast.predictedPctAtReset))}% by reset ${resetStr}`;
       }
-      lines.push(`${FULL_LABEL[w.windowKey]}: ${pct}${fc} | font=Menlo`);
+      lines.push(`${FULL_LABEL[w.windowKey] ?? w.name}: ${pct}${fc} | font=Menlo`);
       lines.push(`-- ${sparkline(history)} | font=Menlo`);
     }
   } finally {
     store.close();
   }
 
-  const ageMin = Math.round((nowMs - latest.generatedAtMs) / 60000);
+  const ageMin = profile?.generatedAtMs === null || profile?.generatedAtMs === undefined
+    ? "?" : Math.round((nowMs - profile.generatedAtMs) / 60000);
   lines.push("---");
   // In the baked binary process.execPath is the llm-squeeze binary; in dev it's
   // node (the menubar only runs from the binary, so this resolves correctly there).

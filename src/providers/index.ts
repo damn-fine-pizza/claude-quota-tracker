@@ -29,6 +29,12 @@ export class ProviderRegistry {
     return source;
   }
 
+  budgetSourceFor(providerId: string, profileId: string): BudgetSource | null {
+    return this.budgetSources().find((source) =>
+      source.providerId === providerId && source.profileId === profileId,
+    ) ?? null;
+  }
+
   executionBackends(): ExecutionBackend[] {
     return [...this.executionBackendsById.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
@@ -37,6 +43,12 @@ export class ProviderRegistry {
     const backend = this.executionBackendsById.get(id);
     if (!backend) throw new Error(`execution backend not registered: ${id}`);
     return backend;
+  }
+
+  executionBackendFor(providerId: string, profileId: string): ExecutionBackend | null {
+    return this.executionBackends().find((backend) =>
+      backend.providerId === providerId && backend.profileId === profileId,
+    ) ?? null;
   }
 }
 

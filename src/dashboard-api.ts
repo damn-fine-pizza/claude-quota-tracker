@@ -1,46 +1,25 @@
-import { existsSync, readFileSync } from "node:fs";
 import { LATEST_JSON_PATH, loadConfig } from "./config.js";
 import { exhaustionEpochMs, type Forecast } from "./forecast.js";
 import { Store } from "./store.js";
+import { SIZE_ESTIMATES, type TaskSize } from "./types.js";
 import {
-  SIZE_ESTIMATES, WINDOW_DURATION_MS, type TaskSize, type WindowKey,
-} from "./types.js";
-
-const WINDOW_LABEL: Record<WindowKey, string> = {
-  session_5h: "Session (5h)",
-  weekly_all: "Week (all models)",
-  weekly_sonnet: "Week (Sonnet)",
-};
+  CLAUDE_DEFAULT_PROFILE_ID, CLAUDE_PROVIDER_ID, profileCache, readLatestCache,
+  type LatestWindow,
+} from "./latest-cache.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-interface LatestWindow {
-  windowKey: WindowKey;
-  pct: number | null;
-  resetEpochMs: number | null;
-  forecast: Forecast | null;
-}
-
-interface LatestJson {
-  generatedAtMs: number;
-  providers: Record<string, { windows: LatestWindow[] }>;
-}
-
-function readLatest(): LatestJson | null {
-  if (!existsSync(LATEST_JSON_PATH)) return null;
-  try {
-    return JSON.parse(readFileSync(LATEST_JSON_PATH, "utf8")) as LatestJson;
-  } catch {
-    return null;
-  }
-}
-
 /** Tier 1 hero: window gauges + forecast + 7-day KPI. */
 export function overview(store: Store, nowMs: number) {
-  const latest = readLatest();
-  const windows = (latest?.providers["claude"]?.windows ?? []).map((w) => ({
+  const latest = readLatestCache(LATEST_JSON_PATH);
+  const profile = profileCache(latest, CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+  const windows = (profile?.windows ?? []).map((w) => ({
     key: w.windowKey,
-    label: WINDOW_LABEL[w.windowKey] ?? w.windowKey,
+    label: w.name,
+    unit: w.unit,
+    value: w.value,
+    source: w.source,
+    reliability: w.reliability,
     pct: w.pct,
     resetEpochMs: w.resetEpochMs,
     forecast: w.forecast,
@@ -60,8 +39,10 @@ export function overview(store: Store, nowMs: number) {
   // count llm-squeeze's own orchestrated tasks (a distinct, smaller number).
   const k = store.runCostSummary(nowMs - 7 * DAY_MS, nowMs);
   return {
-    generatedAtMs: latest?.generatedAtMs ?? null,
-    ageMin: latest ? Math.round((nowMs - latest.generatedAtMs) / 60000) : null,
+    generatedAtMs: profile?.generatedAtMs ?? null,
+    profileStatus: profile?.status ?? "unavailable",
+    ageMin: profile?.generatedAtMs !== null && profile?.generatedAtMs !== undefined
+      ? Math.round((nowMs - profile.generatedAtMs) / 60000) : null,
     planName: loadConfig().plan.name,
     windows,
     kpi: {
@@ -124,10 +105,12 @@ export function contrib(store: Store, fromTs: number, toTs: number) {
 /** Tier 3: per-window usage time series. */
 export function timeseries(store: Store, nowMs: number) {
   const out: Record<string, Array<{ ts: number; pct: number }>> = {};
-  for (const key of Object.keys(WINDOW_DURATION_MS) as WindowKey[]) {
-    const dur = WINDOW_DURATION_MS[key];
+  const profile = profileCache(readLatestCache(LATEST_JSON_PATH), CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+  for (const window of profile?.windows ?? []) {
+    if (window.durationMs === null || window.unit !== "percent") continue;
+    const { windowKey: key, durationMs: dur } = window;
     out[key] = store
-      .history("claude", key, nowMs - dur)
+      .history(profile?.providerId ?? CLAUDE_PROVIDER_ID, key, nowMs - dur)
       .map((p) => ({ ts: p.ts, pct: p.pct }));
   }
   return out;

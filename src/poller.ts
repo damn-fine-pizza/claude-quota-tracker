@@ -18,23 +18,18 @@ import {
 } from "./notify.js";
 import { createDefaultProviderRegistry } from "./providers/index.js";
 import { Store } from "./store.js";
-import { WINDOW_DURATION_MS, type WindowReading } from "./types.js";
-
-interface LatestWindow extends WindowReading {
-  forecast: Forecast | null;
-}
-
-interface LatestJson {
-  generatedAtMs: number;
-  providers: Record<string, { windows: LatestWindow[] }>;
-}
+import {
+  CLAUDE_DEFAULT_PROFILE_ID, CLAUDE_PROVIDER_ID, emptyLatest, profileCache,
+  profileCacheKey, readLatestCache, withReliability, type LatestJson, type LatestWindow,
+} from "./latest-cache.js";
+import type { WindowReading } from "./types.js";
 
 export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> {
   const config = loadConfig();
   mkdirSync(DATA_DIR, { recursive: true });
   const store = new Store(DB_PATH);
-  const latest: LatestJson = { generatedAtMs: nowMs, providers: {} };
-  let anySuccess = false;
+  const previous = readLatestCache(LATEST_JSON_PATH);
+  const latest: LatestJson = { ...(previous ?? emptyLatest(nowMs)), generatedAtMs: nowMs };
 
   try {
     for (const source of createDefaultProviderRegistry().budgetSources()) {
@@ -43,9 +38,15 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
         readings = await source.fetchBudgetSnapshot(nowMs);
       } catch (e) {
         console.error(`[llm-squeeze] budget source ${source.id} fetch failed:`, e);
+        const cached = profileCache(previous, source.providerId, source.profileId);
+        latest.profiles[profileCacheKey(source.providerId, source.profileId)] = cached
+          ? { ...cached, status: "stale", windows: withReliability(cached.windows, "stale") }
+          : {
+            providerId: source.providerId, profileId: source.profileId,
+            status: "unavailable", generatedAtMs: null, windows: [],
+          };
         continue;
       }
-      anySuccess = true;
       store.appendSnapshot(nowMs, source.providerId, readings);
 
       const windows: LatestWindow[] = [];
@@ -53,7 +54,11 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
       for (const r of readings) {
         let forecast: Forecast | null = null;
         if (r.pct !== null && r.resetEpochMs !== null) {
-          const windowDurationMs = WINDOW_DURATION_MS[r.windowKey];
+          const windowDurationMs = r.durationMs;
+          if (windowDurationMs === null || r.unit !== "percent") {
+            windows.push({ ...r, forecast });
+            continue;
+          }
           const history = store.history(source.providerId, r.windowKey, nowMs - windowDurationMs);
           forecast = forecastAtReset({
             nowMs,
@@ -72,7 +77,13 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
         }
         windows.push({ ...r, forecast });
       }
-      latest.providers[source.providerId] = { windows };
+      latest.profiles[profileCacheKey(source.providerId, source.profileId)] = {
+        providerId: source.providerId,
+        profileId: source.profileId,
+        status: "healthy",
+        generatedAtMs: nowMs,
+        windows,
+      };
 
       const state = loadNotifyState(NOTIFY_STATE_PATH);
       const nudges = decideNudges({ nowMs, items: nudgeInputs, config: config.notify, state });
@@ -85,7 +96,7 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
     store.close();
   }
 
-  if (anySuccess) writeFileSync(LATEST_JSON_PATH, JSON.stringify(latest, null, 2));
+  writeFileSync(LATEST_JSON_PATH, JSON.stringify(latest, null, 2));
 
   try {
     const ingestStore = new Store(DB_PATH);
@@ -144,13 +155,14 @@ function maybeSpawnExecutor(latest: LatestJson, config: Config): void {
       return;
     }
 
-    const windows = latest.providers["claude"]?.windows ?? [];
+    const profile = profileCache(latest, CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+    const windows = profile?.windows ?? [];
     const find = (key: string) => windows.find((w) => w.windowKey === key);
     const verdict = shouldRunExecutor({
       nowMs,
       config,
       currentTz: currentTimezone(),
-      latestGeneratedAtMs: latest.generatedAtMs,
+      latestGeneratedAtMs: profile?.generatedAtMs ?? null,
       guard: {
         nowMs,
         sessionPct: find("session_5h")?.pct ?? null,
@@ -187,7 +199,7 @@ const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv
 if (isMain) {
   pollOnce()
     .then((latest) => {
-      const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
+      const n = Object.values(latest.profiles).reduce((s, p) => s + p.windows.length, 0);
       console.log(`[llm-squeeze] polled ${n} window readings`);
     })
     .catch((e) => {

@@ -50,7 +50,7 @@ export async function main(argv: string[]): Promise<void> {
   switch (cmd) {
     case "poll": {
       const latest = await pollOnce();
-      const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
+      const n = Object.values(latest.profiles).reduce((s, p) => s + p.windows.length, 0);
       console.log(`[${PRODUCT_NAME}] polled ${n} window readings`);
       return;
     }
