@@ -34,7 +34,7 @@ Usage:
   ${CLI_NAME} dashboard [--open] local dashboard
   ${CLI_NAME} ingest             ingest Claude Code session logs
   ${CLI_NAME} paths              print config/data paths
-  ${CLI_NAME} schedule list|add <timestamp|cron> <expression> [task-id]
+  ${CLI_NAME} schedule list|add|pause|resume|cancel <args>
   ${CLI_NAME} queue preview|run [manual|priority]
 `;
 
@@ -127,7 +127,7 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
     case "dashboard": return dashboard(argv.slice(1));
-    case "schedule": { const timers = new TimerStore(); try { if (argv[1] === "list") console.log(JSON.stringify(timers.list(), null, 2)); else if (argv[1] === "add" && (argv[2] === "timestamp" || argv[2] === "cron") && argv[3]) console.log(JSON.stringify(timers.add(argv[2], argv[3], argv[4] ? Number(argv[4]) : null), null, 2)); else { console.error("usage: schedule list|add <timestamp|cron> <expression> [task-id]"); process.exitCode = 1; } } finally { timers.close(); } return; }
+    case "schedule": { const timers = new TimerStore(); try { if (argv[1] === "list") console.log(JSON.stringify(timers.list(), null, 2)); else if (argv[1] === "add" && (argv[2] === "timestamp" || argv[2] === "cron") && argv[3]) console.log(JSON.stringify(timers.add(argv[2], argv[3], argv[4] ? Number(argv[4]) : null), null, 2)); else if ((argv[1] === "pause" || argv[1] === "resume") && argv[2]) console.log(JSON.stringify(timers.update(Number(argv[2]),{paused:argv[1]==="pause"}),null,2)); else if(argv[1]==="cancel"&&argv[2]) console.log(JSON.stringify({cancelled:timers.cancel(Number(argv[2]))})); else { console.error("usage: schedule list|add|pause|resume|cancel"); process.exitCode = 1; } } finally { timers.close(); } return; }
     case "queue": { const { planQueue } = await import("./queue-planner.js"); const { Store } = await import("./store.js"); const { SchedulerMetaStore } = await import("./scheduler-meta.js"); const store=new Store((await import("./config.js")).DB_PATH); const meta=new SchedulerMetaStore(); try { const tasks=store.listTasks(["queued","carried_over"]); const m=new Map(tasks.map(t=>[t.id,meta.getOrDefault(t.id)])); console.log(JSON.stringify(planQueue({tasks,meta:m,mode:argv[2]==="manual"?"manual":"priority",nowMs:Date.now(),cutoffMs:null,estimates:new Map(tasks.map(t=>[t.id,m.get(t.id)!.estimatedTokens??0]))}),null,2)); } finally {meta.close();store.close();} return; }
     case "paths": console.log(`config: ${CONFIG_PATH}`); console.log(`data:   ${DATA_DIR}`); return;
     default:

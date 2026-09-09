@@ -10,6 +10,7 @@ import { SchedulerMetaStore } from "../scheduler-meta.js";
 import { planQueue } from "../queue-planner.js";
 import { Store } from "../store.js";
 import { TRIAGE, windowGuard } from "../tasks.js";
+import { TimerStore } from "../timers.js";
 
 function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -111,6 +112,7 @@ export function registerTools(server: McpServer): void {
       const snapshot = readQuotaSnapshot(nowMs);
       const pacing = quotaPacingVerdict({
         enabled: pacingCfg.enabled, nowMs,
+        mode: pacingCfg.mode,
         sessionPct: snapshot.guard.sessionPct, sessionResetMs: snapshot.guard.sessionResetMs,
         weeklyPct: snapshot.guard.weeklyPct, weeklyResetMs: snapshot.guard.weeklyResetMs,
         sessionBudgetPct: config.executor.sessionGuardPct,
@@ -131,6 +133,7 @@ export function registerTools(server: McpServer): void {
       description: "Update quota pacing settings (docs/MCP_SCHEDULER.md). Only the provided fields are changed; omitted fields keep their current value.",
       inputSchema: {
         enabled: z.boolean().optional(),
+        mode: z.enum(["protect", "balanced", "flush"]).optional(),
         slackPct: z.number().min(0).optional(),
         sessionWindowHours: z.number().min(0.1).optional(),
         weeklyWindowHours: z.number().min(0.1).optional(),
@@ -161,6 +164,11 @@ export function registerTools(server: McpServer): void {
       }
     },
   );
+
+  server.registerTool("list_timers", { description: "List persistent timestamp and cron timers.", inputSchema: {} }, async () => { const t=new TimerStore(); try{return text(t.list());}finally{t.close();} });
+  server.registerTool("create_timer", { description: "Create a persistent timestamp or cron timer.", inputSchema: { kind:z.enum(["timestamp","cron"]), expression:z.string().min(1), task_id:z.number().nullable().optional() } }, async (a) => { const t=new TimerStore(); try{return text(t.add(a.kind,a.expression,a.task_id??null));}finally{t.close();} });
+  server.registerTool("update_timer", { description: "Update or pause a timer.", inputSchema: { timer_id:z.number(), expression:z.string().optional(), paused:z.boolean().optional() } }, async (a) => { const t=new TimerStore(); try { const x=t.update(a.timer_id,{expression:a.expression,paused:a.paused}); if(!x)throw new Error("timer not found"); return text(x); } finally {t.close();} });
+  server.registerTool("cancel_timer", { description: "Cancel a persistent timer.", inputSchema: { timer_id:z.number() } }, async (a) => { const t=new TimerStore(); try{return text({cancelled:t.cancel(a.timer_id)});}finally{t.close();} });
 
   server.registerTool(
     "pause_task",

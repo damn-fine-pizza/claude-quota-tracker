@@ -143,3 +143,10 @@ export function estimates(store: Store) {
 export function queue(store: Store) {
   return store.queueCounts();
 }
+
+/** Observable useful-work metrics; absent telemetry is represented as null, never invented. */
+export function schedulerMetrics(store: Store) {
+  const records = store.estimationRecords();
+  const finished = records.filter((r) => r.actualTokens !== null);
+  return { completedRuns: finished.length, observedTokens: finished.reduce((n, r) => n + (r.actualTokens ?? 0), 0), acceptanceRate: null, retryAmplification: null, cacheHitRate: null };
+}

@@ -11,6 +11,7 @@ import { SchedulerMetaStore } from "./scheduler-meta.js";
 import { admitTask, compareScheduledTasks, continuousEligible } from "./scheduler-policy.js";
 import { Store } from "./store.js";
 import { planQueue } from "./queue-planner.js";
+import { preflightTask } from "./preflight.js";
 import {
   currentTimezone, inNightWindow, isLatestFresh, msUntilWindowEnd,
   nightWindowConfirmed, windowGuard,
@@ -61,6 +62,7 @@ export async function runPacedOnce(): Promise<boolean> {
 
     const pacing = quotaPacingVerdict({
       enabled: pacingCfg.enabled,
+      mode: pacingCfg.mode,
       nowMs,
       sessionPct: latest.guard.sessionPct,
       sessionResetMs: latest.guard.sessionResetMs,
@@ -102,6 +104,8 @@ export async function runPacedOnce(): Promise<boolean> {
       .filter(Boolean);
 
     for (const { task, meta } of orderedCandidates) {
+      const preflight = preflightTask(task);
+      if (!preflight.ok) { console.log(`[paced-executor] hold task #${task.id}: ${preflight.reasons.join(",")}`); continue; }
       const estimate = estimateTaskTokens({
         size: task.size,
         overrideTokens: meta.estimatedTokens,

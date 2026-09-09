@@ -46,6 +46,7 @@ function handleApi(store: Store, url: URL, res: ServerResponse): void {
     case "/api/timeseries": return json(res, 200, api.timeseries(store, nowMs));
     case "/api/estimates": return json(res, 200, api.estimates(store));
     case "/api/queue": return json(res, 200, api.queue(store));
+    case "/api/scheduler-metrics": return json(res, 200, api.schedulerMetrics(store));
     default: return json(res, 404, { error: "not found" });
   }
 }

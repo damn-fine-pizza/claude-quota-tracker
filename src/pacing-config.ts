@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { CONFIG_PATH } from "./config.js";
 
 export interface PacingConfig {
+  mode: "protect" | "balanced" | "flush";
   enabled: boolean;
   slackPct: number;
   sessionWindowHours: number;
@@ -15,6 +16,7 @@ export interface PacingConfig {
 }
 
 export const DEFAULT_PACING_CONFIG: PacingConfig = {
+  mode: "balanced",
   enabled: false,
   slackPct: 5,
   sessionWindowHours: 5,
@@ -57,6 +59,7 @@ export function obj(v: unknown): Record<string, unknown> {
 export function mergePacingPatch(current: PacingConfig, patch: unknown): PacingConfig {
   const p = obj(patch);
   return {
+    mode: p.mode === "protect" || p.mode === "balanced" || p.mode === "flush" ? p.mode : current.mode,
     enabled: bool(p.enabled, current.enabled),
     slackPct: num(p.slackPct, current.slackPct, 0),
     sessionWindowHours: num(p.sessionWindowHours, current.sessionWindowHours, 0.1),

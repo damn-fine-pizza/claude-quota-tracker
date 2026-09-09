@@ -119,6 +119,7 @@ export function pacingWindowStatus(input: PacingWindowInput):
  */
 export function quotaPacingVerdict(args: {
   enabled: boolean;
+  mode?: "protect" | "balanced" | "flush";
   nowMs: number;
   sessionPct: number | null;
   sessionResetMs: number | null;
@@ -175,7 +176,7 @@ export function quotaPacingVerdict(args: {
         (a.predictedPctAtReset - budgetPlusSlack(a.name)),
     )[0];
 
-  if (blocked) {
+  if (blocked && args.mode !== "flush") {
     return {
       ok: false,
       reason:
