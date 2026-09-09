@@ -12,6 +12,7 @@ import { admitTask, compareScheduledTasks, continuousEligible } from "./schedule
 import { Store } from "./store.js";
 import { planQueue } from "./queue-planner.js";
 import { preflightTask } from "./preflight.js";
+import { loadOverride } from "./override.js";
 import {
   currentTimezone, inNightWindow, isLatestFresh, msUntilWindowEnd,
   nightWindowConfirmed, windowGuard,
@@ -94,10 +95,12 @@ export async function runPacedOnce(): Promise<boolean> {
       .sort(compareScheduledTasks);
 
     const candidateMeta = new Map(candidates.map(({ task, meta }) => [task.id, meta]));
+    const override = loadOverride();
     const plannerMode = candidates[0]?.meta.queueMode ?? "priority";
     const planned = planQueue({
       tasks: candidates.map(({ task }) => task), meta: candidateMeta, mode: plannerMode, nowMs,
       cutoffMs: null, estimates: new Map(candidates.map(({ task, meta }) => [task.id, meta.estimatedTokens ?? 0])),
+      routing: config.routing, reserveProfile: override.enabled ? override.reserveProfile : null,
     });
     const orderedCandidates = planned.filter((decision) => decision.ok)
       .map((decision) => candidates.find(({ task }) => task.id === decision.taskId)!)
