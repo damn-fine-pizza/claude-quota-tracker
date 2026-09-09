@@ -1,6 +1,7 @@
 import type { ExecFn } from "../runner.js";
 import { ClaudeBudgetSource } from "./claude-budget.js";
 import { ClaudeExecutionBackend } from "./claude-execution.js";
+import { CodexExecutionBackend } from "./codex-execution.js";
 import type { BudgetSource, ExecutionBackend } from "./contracts.js";
 
 export class ProviderRegistry {
@@ -67,6 +68,7 @@ export function createDefaultProviderRegistry(options: DefaultRegistryOptions = 
 }
 
 export { ClaudeBudgetSource, ClaudeExecutionBackend };
+export { CodexExecutionBackend };
 export type {
   BudgetSource, ExecutionBackend, ExecutionCapabilities, ExecutionOutcome, ExecutionRequest,
 } from "./contracts.js";
