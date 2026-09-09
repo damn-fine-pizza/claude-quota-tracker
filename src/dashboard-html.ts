@@ -137,6 +137,9 @@ function renderQueue(q){
     return '<div class="qchip"><span class="qn">'+(q[o[0]]||0)+'</span><span class="ql">'+o[1]+'</span></div>';
   }).join('');
 }
+function renderBacklog(rows){ el('backlog').innerHTML=(rows||[]).map(function(r){return '<div class="mrow"><div class="mlabel">#'+r.id+' '+esc(r.prompt)+'</div><div class="mval">'+esc(r.status)+' · '+esc(r.size)+'</div></div>';}).join('')||empty('no tasks'); }
+function renderTimers(rows){ el('timers').innerHTML=(rows||[]).map(function(t){return '<div class="mrow"><div class="mlabel">'+esc(t.kind)+' '+esc(t.expression)+'</div><div class="mval">'+(t.paused?'paused':'active')+'</div></div>';}).join('')||empty('no timers'); }
+function renderRouting(p){ el('routing').innerHTML=(p.rules||[]).map(function(r){return '<div class="mrow"><div class="mlabel">'+esc(r.category)+'</div><div class="mval">'+esc(r.profiles.join(' → '))+(r.fallbackEnabled?' fallback':'')+'</div></div>';}).join('')||empty('default profile routing'); }
 
 function load(){
   Promise.all([
@@ -146,6 +149,7 @@ function load(){
     fetch('/api/timeseries').then(function(r){return r.json();}),
     fetch('/api/estimates').then(function(r){return r.json();}),
     fetch('/api/queue').then(function(r){return r.json();})
+    ,fetch('/api/backlog').then(function(r){return r.json();}),fetch('/api/timers').then(function(r){return r.json();}),fetch('/api/routing').then(function(r){return r.json();})
   ]).then(function(a){
     try{ renderOverview(a[0]); }catch(e){ el('gauges').innerHTML=empty('overview error: '+e); }
     try{ renderModels(a[1]); }catch(e){ el('models').innerHTML=empty('models error: '+e); }
@@ -153,6 +157,7 @@ function load(){
     try{ renderTimeseries(a[3]); }catch(e){ el('timeseries').innerHTML=empty('timeseries error: '+e); }
     try{ renderEstimates(a[4]); }catch(e){ el('estimates').innerHTML=empty('estimates error: '+e); }
     try{ renderQueue(a[5]); }catch(e){ el('queue').innerHTML=empty('queue error'); }
+    try{ renderBacklog(a[6]); renderTimers(a[7]); renderRouting(a[8]); }catch(e){}
   }).catch(function(e){ el('gauges').innerHTML=empty('load failed: '+e); });
 }
 load();
@@ -298,6 +303,8 @@ export const DASHBOARD_HTML = `<!doctype html>
     <section class="card"><h2>Estimate accuracy</h2><div id="estimates"></div></section>
   </div>
   <section class="card"><h2>Task queue</h2><div id="queue"></div></section>
+  <section class="row two"><div class="card"><h2>Backlog</h2><div id="backlog"></div></div><div class="card"><h2>Timers</h2><div id="timers"></div></div></section>
+  <section class="card"><h2>Routing policy</h2><div id="routing"></div></section>
   <section class="card">
     <h2>Settings</h2>
     <div class="setgrid">
