@@ -73,8 +73,8 @@ describe("mcp-http", () => {
     const listBody = (await readRpcJson(list)) as { result: { tools: Array<{ name: string }> } };
     const names = listBody.result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cancel_timer", "create_timer", "delete_task", "get_pacing_status", "get_quota_status", "list_tasks", "list_timers",
-      "pause_task", "preview_queue", "resume_task", "run_now", "run_queue", "set_pacing_config", "submit_task", "update_task", "update_timer",
+      "cancel_timer", "create_timer", "delete_task", "get_pacing_status", "get_quota_status", "get_routing_policy", "get_scheduler_status", "list_tasks", "list_timers",
+      "pause_task", "preview_queue", "resume_task", "run_now", "run_queue", "set_manual_override", "set_pacing_config", "set_routing_policy", "submit_task", "update_task", "update_timer",
     ]);
 
     const call = await rpc(server.url, {

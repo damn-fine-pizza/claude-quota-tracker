@@ -11,6 +11,8 @@ import { planQueue } from "../queue-planner.js";
 import { Store } from "../store.js";
 import { TRIAGE, windowGuard } from "../tasks.js";
 import { TimerStore } from "../timers.js";
+import { loadOverride, setOverride } from "../override.js";
+import { validateRoutingPolicy } from "../routing-policy.js";
 
 function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -169,6 +171,10 @@ export function registerTools(server: McpServer): void {
   server.registerTool("create_timer", { description: "Create a persistent timestamp or cron timer.", inputSchema: { kind:z.enum(["timestamp","cron"]), expression:z.string().min(1), task_id:z.number().nullable().optional() } }, async (a) => { const t=new TimerStore(); try{return text(t.add(a.kind,a.expression,a.task_id??null));}finally{t.close();} });
   server.registerTool("update_timer", { description: "Update or pause a timer.", inputSchema: { timer_id:z.number(), expression:z.string().optional(), paused:z.boolean().optional() } }, async (a) => { const t=new TimerStore(); try { const x=t.update(a.timer_id,{expression:a.expression,paused:a.paused}); if(!x)throw new Error("timer not found"); return text(x); } finally {t.close();} });
   server.registerTool("cancel_timer", { description: "Cancel a persistent timer.", inputSchema: { timer_id:z.number() } }, async (a) => { const t=new TimerStore(); try{return text({cancelled:t.cancel(a.timer_id)});}finally{t.close();} });
+  server.registerTool("get_scheduler_status", { description: "Return queue, override, routing and pacing state.", inputSchema:{} }, async()=>text({override:loadOverride(),routing:loadConfig().routing,pacing:loadPacingConfig()}));
+  server.registerTool("set_manual_override", { description: "Explicitly reserve/preempt a profile; yolo is rejected.", inputSchema:{enabled:z.boolean(),reserve_profile:z.string().nullable().optional(),preempt:z.boolean().optional()} }, async(a)=>text(setOverride({enabled:a.enabled,reserveProfile:a.reserve_profile??null,preempt:a.preempt??a.enabled})));
+  server.registerTool("get_routing_policy", { description:"Return category/provider profile routing policy.", inputSchema:{} }, async()=>text(loadConfig().routing));
+  server.registerTool("set_routing_policy", { description:"Set ordered category profile matrices; fallback must be explicit and yolo is forbidden.", inputSchema:{rules:z.array(z.object({category:z.string().min(1),profiles:z.array(z.string().min(1)).min(1),fallbackEnabled:z.boolean()})),reserveEnabled:z.boolean().optional(),reservedProfile:z.string().nullable().optional()} }, async(a)=>{const p=validateRoutingPolicy({rules:a.rules,reserveEnabled:a.reserveEnabled??false,reservedProfile:a.reservedProfile??null}); saveConfigPatch({routing:p});return text(p);});
 
   server.registerTool(
     "pause_task",
