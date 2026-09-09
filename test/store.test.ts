@@ -219,4 +219,60 @@ describe("Store task queue (in-memory)", () => {
     expect(store.updateTaskPriority(999_999, 5, 400)).toBeNull();
     store.close();
   });
+
+  it("updateTaskContent edits prompt/cwd/size/permission on a queued task", () => {
+    const store = new Store(":memory:");
+    const t = store.enqueueTask(100, taskInput({ prompt: "old", cwd: "/a", size: "xs" }));
+    const updated = store.updateTaskContent(t.id, 200, {
+      prompt: "new", cwd: "/b", size: "l",
+      permissionClass: "write-scoped", permissionMode: "acceptEdits", unattendedOk: true,
+    });
+    expect(updated?.prompt).toBe("new");
+    expect(updated?.cwd).toBe("/b");
+    expect(updated?.size).toBe("l");
+    expect(updated?.permissionClass).toBe("write-scoped");
+    expect(updated?.updatedTs).toBe(200);
+    // Unspecified fields keep their current value.
+    expect(updated?.priority).toBe(0);
+    store.close();
+  });
+
+  it("updateTaskContent refuses to edit a running/done/failed task", () => {
+    const store = new Store(":memory:");
+    const t = store.enqueueTask(100, taskInput({}));
+    store.claimNextTask(200);
+    expect(store.getTask(t.id)?.status).toBe("running");
+    expect(store.updateTaskContent(t.id, 300, { prompt: "nope" })).toBeNull();
+    expect(store.getTask(t.id)?.prompt).toBe("do something"); // unchanged
+    store.close();
+  });
+
+  it("updateTaskContent returns null for an unknown id", () => {
+    const store = new Store(":memory:");
+    expect(store.updateTaskContent(999_999, 100, { prompt: "x" })).toBeNull();
+    store.close();
+  });
+
+  it("deleteTask removes a queued task and its run history", () => {
+    const store = new Store(":memory:");
+    const t = store.enqueueTask(100, taskInput({}));
+    expect(store.deleteTask(t.id)).toBe(true);
+    expect(store.getTask(t.id)).toBeNull();
+    expect(store.listTasks()).toEqual([]);
+  });
+
+  it("deleteTask refuses a running task and leaves it intact", () => {
+    const store = new Store(":memory:");
+    const t = store.enqueueTask(100, taskInput({}));
+    store.claimNextTask(200);
+    expect(store.deleteTask(t.id)).toBe(false);
+    expect(store.getTask(t.id)).not.toBeNull();
+    store.close();
+  });
+
+  it("deleteTask returns false for an unknown id", () => {
+    const store = new Store(":memory:");
+    expect(store.deleteTask(999_999)).toBe(false);
+    store.close();
+  });
 });

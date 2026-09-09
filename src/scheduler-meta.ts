@@ -107,6 +107,10 @@ export class SchedulerMetaStore {
     return this.upsert(taskId, nowMs, { ...current, paused });
   }
 
+  delete(taskId: number): void {
+    this.db.prepare("DELETE FROM task_schedule_meta WHERE task_id = ?").run(taskId);
+  }
+
   list(): TaskScheduleMeta[] {
     const rows = this.db.prepare(
       "SELECT * FROM task_schedule_meta ORDER BY updated_ts DESC",
