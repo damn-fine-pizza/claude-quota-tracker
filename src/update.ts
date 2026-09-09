@@ -5,6 +5,8 @@ import { loadConfig } from "./config.js";
 import { INSTALL_SOURCE_PATH } from "./install.js";
 import { PACKAGE_VERSION } from "./version.js";
 
+const SOURCE_PACKAGE_NAME = "llm-squeeze";
+
 export interface ExecResult {
   stdout: string;
   stderr: string;
@@ -36,7 +38,7 @@ export function resolveSourceRepo(cwd: string = process.cwd()): string | null {
   try {
     if (existsSync(join(cwd, ".git"))) {
       const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8")) as { name?: string };
-      if (pkg.name === "claude-quota-tracker") return cwd;
+      if (pkg.name === SOURCE_PACKAGE_NAME) return cwd;
     }
   } catch {
     // cwd doesn't look like this repo

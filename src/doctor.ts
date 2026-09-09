@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { CLAUDE_PROJECTS_DIR, CONFIG_PATH, DATA_DIR, DB_PATH, loadConfig, PROJECT_ROOT } from "./config.js";
 import { APP_HOME, commandWorks, LAUNCHER, systemdUsable } from "./install.js";
 import { detectContainerEnvironment, isLoopbackHost, normalizePlatform } from "./platform.js";
-import { ClaudeProvider } from "./providers/claude.js";
+import { createDefaultProviderRegistry } from "./providers/index.js";
 import { Store } from "./store.js";
-import { PACKAGE_VERSION, PRODUCT_NAME } from "./version.js";
+import { CLI_NAME, MCP_SERVER_NAME, PACKAGE_VERSION } from "./version.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
@@ -75,19 +75,19 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
   push(
     "runtime", "installed runtime",
     existsSync(installedCli) ? "ok" : "warn",
-    existsSync(installedCli) ? installedCli : `not found at ${installedCli} — run \`claude-quota install\``,
+    existsSync(installedCli) ? installedCli : `not found at ${installedCli} — run \`${CLI_NAME} install\``,
   );
   push(
     "runtime", "launcher",
     existsSync(LAUNCHER) ? "ok" : "warn",
-    existsSync(LAUNCHER) ? LAUNCHER : `not found at ${LAUNCHER} — run \`claude-quota install\``,
+    existsSync(LAUNCHER) ? LAUNCHER : `not found at ${LAUNCHER} — run \`${CLI_NAME} install\``,
   );
-
   if (!commandWorks("claude", ["--version"])) {
     push("claude", "claude CLI", "warn", "`claude` not found on PATH");
   } else {
     try {
-      const windows = await new ClaudeProvider().fetch();
+      const source = createDefaultProviderRegistry().requireBudgetSource("claude-cli-usage");
+      const windows = await source.fetchBudgetSnapshot();
       push("claude", "claude CLI", "ok", "`claude -p \"/usage\"` executed");
       push("claude", "quota snapshot", windows.length > 0 ? "ok" : "warn", `${windows.length} usage window(s) parsed`);
     } catch (e) {
@@ -121,10 +121,10 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
     try {
       const res = await fetch(`http://${http.host}:${http.port}/health`, { signal: AbortSignal.timeout(1000) });
       const body = (await res.json().catch(() => null)) as { name?: string; pid?: number; version?: string } | null;
-      if (res.ok && body?.name === PRODUCT_NAME) {
+      if (res.ok && body?.name === MCP_SERVER_NAME) {
         push("mcp", "http port", "ok", `already running (pid ${body.pid}, v${body.version})`);
       } else {
-        push("mcp", "http port", "warn", `port ${http.port} is occupied by a non-quota-tracker service`);
+        push("mcp", "http port", "warn", `port ${http.port} is occupied by a non-llm-squeeze service`);
       }
     } catch {
       push("mcp", "http port", "ok", `port ${http.port} is free`);
@@ -143,13 +143,13 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
     push("desktop", "notify-send", commandWorks("notify-send", ["--version"]) ? "ok" : "warn", "used for notifications");
     const systemd = systemdUsable();
     push("scheduler", "systemd-user", systemd ? "ok" : "warn", systemd ? "available" : "unavailable");
-    push("scheduler", "portable-daemon", "ok", "available via `claude-quota daemon`");
+    push("scheduler", "portable-daemon", "ok", `available via \`${CLI_NAME} daemon\``);
   }
 
   if (detectContainerEnvironment()) {
     push(
       "container", "environment", "warn",
-      "container/Distrobox-like environment detected — use `claude-quota daemon` instead of systemd/launchd",
+      `container/Distrobox-like environment detected — use \`${CLI_NAME} daemon\` instead of systemd/launchd`,
     );
   }
 
@@ -159,6 +159,6 @@ export async function runDoctorChecks(): Promise<DoctorReport> {
 export function formatDoctorReport(report: DoctorReport): string {
   const icon: Record<CheckStatus, string> = { ok: "✓", warn: "⚠", fail: "✗" };
   const lines = report.checks.map((c) => `${icon[c.status]} [${c.category}] ${c.name}: ${c.detail}`);
-  lines.push("", report.ok ? "claude-quota doctor: OK" : "claude-quota doctor: FAILED (see ✗ above)");
+  lines.push("", report.ok ? `${CLI_NAME} doctor: OK` : `${CLI_NAME} doctor: FAILED (see ✗ above)`);
   return lines.join("\n");
 }

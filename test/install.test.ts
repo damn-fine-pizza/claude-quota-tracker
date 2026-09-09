@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-// Isolated QUOTA_TRACKER_HOME + HOME, set before install.js is first imported
-// — never the real ~/.quota-tracker or ~/.local/bin. installRuntime() alone
+// Isolated LLM_SQUEEZE_HOME + HOME, set before install.js is first imported
+// — never the real ~/.llm-squeeze or ~/.local/bin. installRuntime() alone
 // is exercised here (not install()), so this never touches the real
 // systemd/launchd session — only installRuntime is affected by this bug fix.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-install-home-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 process.env.HOME = homeDir;
 
 const { installRuntime } = await import("../src/install.js");
@@ -47,6 +47,19 @@ function fakeNpm(behavior: "succeed" | "fail"): string {
 }
 
 describe("installRuntime dependency materialization", () => {
+  it("installs only the canonical llm-squeeze launcher", () => {
+    const { repoRoot, srcDist } = fakeSourceRepo();
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({}));
+
+    installRuntime("/usr/bin/node", { srcDist });
+
+    const launcher = join(homeDir, ".local", "bin", "llm-squeeze");
+    expect(existsSync(launcher)).toBe(true);
+    expect(readFileSync(launcher, "utf8")).toContain("LLM_SQUEEZE_HOME");
+    expect(readFileSync(launcher, "utf8")).toContain("/usr/bin/node");
+    expect(readFileSync(launcher, "utf8")).not.toContain("LEGACY");
+  });
+
   it("copies dist/, package files, and materializes production node_modules via the injected npm", () => {
     const { srcDist } = fakeSourceRepo();
     installRuntime("node", { npmBin: fakeNpm("succeed"), srcDist });

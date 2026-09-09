@@ -5,7 +5,7 @@ import { loadConfig, type McpHttpConfig } from "./config.js";
 import { autoOpenDashboardIfConfigured } from "./dashboard.js";
 import { createMcpServer } from "./mcp/server.js";
 import { isLoopbackHost } from "./platform.js";
-import { PACKAGE_VERSION, PRODUCT_NAME } from "./version.js";
+import { CLI_NAME, MCP_SERVER_NAME, PACKAGE_VERSION } from "./version.js";
 
 const MAX_BODY_BYTES = 1_000_000;
 const startedAtMs = Date.now();
@@ -71,7 +71,7 @@ export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {})
     throw new Error(`invalid mcp.http.port: ${port}`);
   }
   if (!enabled) {
-    console.error("[mcp-http] note: mcp.http.enabled is false in config.json — starting anyway since `claude-quota mcp-http` was run directly.");
+    console.error(`[mcp-http] note: mcp.http.enabled is false in config.json — starting anyway since \`${CLI_NAME} mcp-http\` was run directly.`);
   }
   if (!isLoopbackHost(host)) {
     console.warn(`[mcp-http] WARNING: binding to non-loopback host "${host}" exposes this MCP server (including run_now) beyond localhost.`);
@@ -85,7 +85,7 @@ export async function startMcpHttpServer(overrides: Partial<McpHttpConfig> = {})
     if (url.pathname === "/health") {
       sendJson(res, 200, {
         ok: true,
-        name: PRODUCT_NAME,
+        name: MCP_SERVER_NAME,
         version: PACKAGE_VERSION,
         transport: "streamable-http",
         mcpProtocolVersion: LATEST_PROTOCOL_VERSION,

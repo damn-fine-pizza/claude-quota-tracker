@@ -1,23 +1,23 @@
 ---
-name: claude-quota-tracker
-description: Check Claude Max20 quota (5h session + weekly windows) and schedule heavy work to run unattended during low-usage night hours, via the local `claude-quota` CLI. Triggers when the user asks about their Claude usage/limits/resets, or wants to defer a slow task to off-hours instead of running it now. Trigger phrases (the user often types Korean) - "how much quota left", "how much have I used", "when does it reset", "at this rate will I run out", "run this tonight", "schedule for off-hours", "queue this up", "do this later", "what's in the queue", "open the dashboard", "quota status", "내 쿼터", "사용량 얼마나 남았어", "한도 얼마나 썼어", "리셋 언제", "이거 밤에 돌려줘", "야간에 예약해줘", "스케줄러에 넣어줘", "나중에 실행", "큐에 뭐 있어", "대시보드 열어줘".
+name: llm-squeeze
+description: Check Claude Max20 quota (5h session + weekly windows) and schedule heavy work to run unattended during low-usage night hours, via the local `llm-squeeze` CLI. Triggers when the user asks about their Claude usage/limits/resets, or wants to defer a slow task to off-hours instead of running it now. Trigger phrases (the user often types Korean) - "how much quota left", "how much have I used", "when does it reset", "at this rate will I run out", "run this tonight", "schedule for off-hours", "queue this up", "do this later", "what's in the queue", "open the dashboard", "quota status", "내 쿼터", "사용량 얼마나 남았어", "한도 얼마나 썼어", "리셋 언제", "이거 밤에 돌려줘", "야간에 예약해줘", "스케줄러에 넣어줘", "나중에 실행", "큐에 뭐 있어", "대시보드 열어줘".
 ---
 
-# claude-quota-tracker
+# llm-squeeze
 
-Wraps the locally installed `claude-quota` CLI (a launcher at `~/.local/bin/claude-quota`)
-to read Claude Max20 usage and schedule tasks onto the night executor. If `claude-quota`
-is not on PATH, call `~/.local/bin/claude-quota` directly.
+Wraps the locally installed `llm-squeeze` CLI (a launcher at `~/.local/bin/llm-squeeze`)
+to read Claude Max20 usage and schedule tasks onto the night executor. If `llm-squeeze`
+is not on PATH, call `~/.local/bin/llm-squeeze` directly.
 
-Data scope: token/cost/task stats come from **tasks that quota-tracker itself ran**
+Data scope: token/cost/task stats come from **tasks that llm-squeeze itself ran**
 (`task_runs`), not your total Claude usage. Window usage percentages come from
 `claude -p "/usage"` snapshots.
 
 ## Check usage
 
 ```bash
-claude-quota status           # human: 3 windows (%, forecast, reset) + 7-day KPI
-claude-quota status --json     # machine: structured windows[]/kpi JSON
+llm-squeeze status           # human: 3 windows (%, forecast, reset) + 7-day KPI
+llm-squeeze status --json     # machine: structured windows[]/kpi JSON
 ```
 
 Each window in `--json`: `pct`, `resetEpochMs`, `forecast.predictedPctAtReset`,
@@ -32,7 +32,7 @@ Heavy or non-urgent work can be deferred to run **unattended during the quietest
 night hours instead of now**:
 
 ```bash
-claude-quota enqueue --night --prompt "<what to do>" --size <xs|s|m|l|xl> --perm <read-only|write-scoped|destructive> [--cwd <path>] [--priority <N>]
+llm-squeeze enqueue --night --prompt "<what to do>" --size <xs|s|m|l|xl> --perm <read-only|write-scoped|destructive> [--cwd <path>] [--priority <N>]
 ```
 
 - `--size`: rough scale (xs ≈ 10K to xl ≈ 400K tokens). Estimates self-correct as
@@ -48,7 +48,7 @@ claude-quota enqueue --night --prompt "<what to do>" --size <xs|s|m|l|xl> --perm
 
 **When to offer scheduling**: if the user asks for a long-running task (large
 refactor, full test sweep, migration, bulk doc generation) whose result isn't
-needed right now, or if `claude-quota status` shows the session window near its guard
+needed right now, or if `llm-squeeze status` shows the session window near its guard
 (default 80%) so running now would threaten the limit — offer "run it now, or
 schedule it for tonight when the window is idle?" If the user explicitly wants it
 now, just do it.
@@ -56,14 +56,14 @@ now, just do it.
 A task registered as `destructive` will not run unattended; to run it:
 
 ```bash
-claude-quota executor --task <id>   # manual run, while the user watches
+llm-squeeze executor --task <id>   # manual run, while the user watches
 ```
 
 ## Inspect the queue and runs
 
 ```bash
-claude-quota tasks            # #id [status] size/perm/window pri — prompt
-claude-quota tasks --json      # structured (status: queued|running|done|failed|carried_over)
+llm-squeeze tasks            # #id [status] size/perm/window pri — prompt
+llm-squeeze tasks --json      # structured (status: queued|running|done|failed|carried_over)
 ```
 
 Use for "what's queued / what ran overnight / did that task finish?". `--json`
@@ -72,7 +72,7 @@ exposes each task's status, attempts, and resumeSessionId.
 ## Dashboard
 
 ```bash
-claude-quota dashboard --open  # open the usage dashboard in the browser (idempotent)
+llm-squeeze dashboard --open  # open the usage dashboard in the browser (idempotent)
 ```
 
 Shows gauges, per-model tokens, a contribution heatmap, estimate accuracy, and
@@ -81,11 +81,11 @@ queue state on one page. Use for "dashboard / stats screen / show me the charts"
 ## Notes
 
 - Polling and night execution run automatically in the background via launchd.
-  Claude normally does not need to call `claude-quota poll` or `claude-quota executor` directly
+  Claude normally does not need to call `llm-squeeze poll` or `llm-squeeze executor` directly
   — `enqueue` is enough to schedule work.
 - Scheduled night tasks only run if **the machine is awake** (launchd does not fire
   during sleep). If the user says "it didn't run overnight," check power/sleep
   settings first.
-- Configuration lives in the `config.json` shown by `claude-quota paths` (guard
+- Configuration lives in the `config.json` shown by `llm-squeeze paths` (guard
   thresholds, `nightFloorHHMM`, quiet hours, etc.).
 ```

@@ -139,7 +139,7 @@ export function parseUsageLine(line: string): UsageEvent | null {
 /**
  * Incrementally ingest all Claude Code session logs into usage_events.
  * Unchanged files (size+mtime+ino match the cursor) are stat-only, never read.
- * Returns counts for `claude-quota ingest` / debugging.
+ * Returns counts for `llm-squeeze ingest` / debugging.
  */
 export function ingestUsage(
   store: Store, nowMs: number, roots?: string | string[],

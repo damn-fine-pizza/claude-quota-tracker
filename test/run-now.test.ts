@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { acquireLock, releaseLock } from "../src/lockfile.js";
+import { ClaudeExecutionBackend } from "../src/providers/index.js";
 import type { ExecFn } from "../src/runner.js";
 import type { TaskInput } from "../src/types.js";
 
@@ -18,12 +19,12 @@ const SUCCESS_JSON = JSON.stringify({
 });
 const okExec: ExecFn = async () => ({ stdout: SUCCESS_JSON, stderr: "", exitCode: 0 });
 
-// Isolated QUOTA_TRACKER_HOME, set before config.js is first imported — never
-// the real ~/.quota-tracker or this repo's own dev data/. Exercises the real
+// Isolated LLM_SQUEEZE_HOME, set before config.js is first imported — never
+// the real ~/.llm-squeeze or this repo's own dev data/. Exercises the real
 // DB_PATH-bound runManualTask (the run_now MCP tool's implementation), which
 // cannot take an injected Store, so isolation has to happen at this level.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-run-now-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 
 const { DATA_DIR, DB_PATH, LATEST_JSON_PATH } = await import("../src/config.js");
 const { runManualTask } = await import("../src/executor.js");
@@ -40,7 +41,7 @@ writeFileSync(LATEST_JSON_PATH, JSON.stringify({
   ] } },
 }));
 
-const LOCK_PATH = join(DATA_DIR, "claude-exec.lock");
+const LOCK_PATH = join(DATA_DIR, "scheduler.lock");
 
 function taskInput(partial: Partial<TaskInput> = {}): TaskInput {
   return {
@@ -84,7 +85,9 @@ describe("runManualTask (run_now)", () => {
     const task = store.enqueueTask(Date.now(), taskInput());
     store.close();
 
-    const result = await runManualTask(task.id, { exec: okExec });
+    const result = await runManualTask(task.id, {
+      backend: new ClaudeExecutionBackend({ exec: okExec }),
+    });
     expect(result).toEqual({ ok: true });
 
     const after = new Store(DB_PATH);

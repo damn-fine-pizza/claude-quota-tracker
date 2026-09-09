@@ -1,13 +1,13 @@
 {
-  "name": "claude-quota-tracker",
+  "name": "llm-squeeze",
   "version": "0.3.0",
   "type": "module",
-  "description": "Track Claude usage, forecast burn rate, and schedule Claude Code work against 5-hour and weekly quota budgets.",
+  "description": "Local quota-aware backlog and scheduler for coding agents.",
   "license": "MIT",
   "author": "jaejun.lee",
-  "homepage": "https://github.com/damn-fine-pizza/claude-quota-tracker#readme",
-  "repository": { "type": "git", "url": "https://github.com/damn-fine-pizza/claude-quota-tracker.git" },
-  "keywords": ["claude", "claude-code", "quota", "scheduler", "mcp", "linux", "systemd", "launchd"],
+  "homepage": "https://github.com/damn-fine-pizza/llm-squeeze#readme",
+  "repository": { "type": "git", "url": "https://github.com/damn-fine-pizza/llm-squeeze.git" },
+  "keywords": ["llm", "agents", "claude", "claude-code", "quota", "scheduler", "mcp", "linux", "systemd", "launchd"],
   "scripts": {
     "prepare": "node scripts/generate-version.mjs",
     "build": "node scripts/generate-version.mjs && tsc",

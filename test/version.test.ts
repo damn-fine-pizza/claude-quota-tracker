@@ -8,14 +8,14 @@ describe("version", () => {
     expect(PACKAGE_VERSION).toBe(pkg.version);
   });
 
-  it("PRODUCT_NAME is the fixed server/product name", () => {
-    expect(PRODUCT_NAME).toBe("claude-quota-tracker");
+  it("PRODUCT_NAME is the single fixed product identity", () => {
+    expect(PRODUCT_NAME).toBe("llm-squeeze");
   });
 
   it("getRuntimeInfo returns the documented shape", () => {
     const info = getRuntimeInfo();
     expect(info).toEqual({
-      name: "claude-quota-tracker",
+      name: "llm-squeeze",
       version: PACKAGE_VERSION,
       node: process.version,
       platform: process.platform,

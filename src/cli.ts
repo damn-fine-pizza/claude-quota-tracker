@@ -8,37 +8,37 @@ import { renderMenubar } from "./menubar.js";
 import { pollOnce } from "./poller.js";
 import { printHint, printStatus, printTasks } from "./report.js";
 import { runPacedOnce } from "./paced-executor.js";
-import { getRuntimeInfo } from "./version.js";
+import { CLI_NAME, getRuntimeInfo, PRODUCT_NAME } from "./version.js";
 
-const HELP = `claude-quota — Claude quota tracker & quota-aware task orchestrator
+const HELP = `${CLI_NAME} — local quota-aware backlog and scheduler for coding agents
 
 Usage:
-  claude-quota install            install launcher + native scheduler when available
-  claude-quota uninstall          remove native scheduler integration (data preserved)
-  claude-quota daemon             portable polling loop (no systemd/launchd required)
-  claude-quota poll               poll usage once
-  claude-quota executor           legacy night queue loop
-  claude-quota paced-executor     quota-aware admission + at most one task
-  claude-quota executor --task N  run task N manually (hard quota guards preserved)
-  claude-quota enqueue            interactive task registration
-  claude-quota mcp                start MCP stdio server
-  claude-quota mcp-http           start MCP Streamable HTTP server (127.0.0.1:47601/mcp)
-  claude-quota version [--json]   runtime/version info
-  claude-quota doctor [--json]    diagnose install, MCP, scheduler, platform integration
-  claude-quota update [--check]   update the installed runtime from a git checkout
-  claude-quota status [--json]    current usage/forecast/KPI
-  claude-quota tasks [--json]     task queue state
-  claude-quota hint [--threshold N]
-  claude-quota menubar            SwiftBar output (macOS)
-  claude-quota dashboard [--open] local dashboard
-  claude-quota ingest             ingest Claude Code session logs
-  claude-quota paths              print config/data paths
+  ${CLI_NAME} install            install launcher + native scheduler when available
+  ${CLI_NAME} uninstall          remove native scheduler integration (data preserved)
+  ${CLI_NAME} daemon             portable polling loop (no systemd/launchd required)
+  ${CLI_NAME} poll               poll usage once
+  ${CLI_NAME} executor           night queue loop
+  ${CLI_NAME} paced-executor     quota-aware admission + at most one task
+  ${CLI_NAME} executor --task N  run task N manually (hard quota guards preserved)
+  ${CLI_NAME} enqueue            interactive task registration
+  ${CLI_NAME} mcp                start MCP stdio server
+  ${CLI_NAME} mcp-http           start MCP Streamable HTTP server (127.0.0.1:47601/mcp)
+  ${CLI_NAME} version [--json]   runtime/version info
+  ${CLI_NAME} doctor [--json]    diagnose install, MCP, scheduler, platform integration
+  ${CLI_NAME} update [--check]   update the installed runtime from a git checkout
+  ${CLI_NAME} status [--json]    current usage/forecast/KPI
+  ${CLI_NAME} tasks [--json]     task queue state
+  ${CLI_NAME} hint [--threshold N]
+  ${CLI_NAME} menubar            SwiftBar output (macOS)
+  ${CLI_NAME} dashboard [--open] local dashboard
+  ${CLI_NAME} ingest             ingest Claude Code session logs
+  ${CLI_NAME} paths              print config/data paths
 `;
 
 function checkNodeVersion(): boolean {
   const [maj, min] = process.versions.node.split(".").map(Number);
   if (maj < 22 || (maj === 22 && min < 5)) {
-    console.error(`claude-quota requires Node 22.5+ (current: ${process.versions.node})`);
+    console.error(`${CLI_NAME} requires Node 22.5+ (current: ${process.versions.node})`);
     return false;
   }
   return true;
@@ -51,7 +51,7 @@ export async function main(argv: string[]): Promise<void> {
     case "poll": {
       const latest = await pollOnce();
       const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
-      console.log(`[claude-quota-tracker] polled ${n} window readings`);
+      console.log(`[${PRODUCT_NAME}] polled ${n} window readings`);
       return;
     }
     case "daemon":
@@ -119,7 +119,7 @@ export async function main(argv: string[]): Promise<void> {
       const store = new Store(DB_PATH);
       try {
         const r = ingestUsage(store, Date.now());
-        console.log(`[claude-quota-tracker] ingest: ${r.inserted} new events from ${r.scanned}/${r.files} files`);
+        console.log(`[${PRODUCT_NAME}] ingest: ${r.inserted} new events from ${r.scanned}/${r.files} files`);
       } finally { store.close(); }
       return;
     }
@@ -131,4 +131,4 @@ export async function main(argv: string[]): Promise<void> {
   }
 }
 
-main(process.argv.slice(2)).catch((e) => { console.error("[claude-quota-tracker] fatal:", e); process.exitCode = 1; });
+main(process.argv.slice(2)).catch((e) => { console.error(`[${PRODUCT_NAME}] fatal:`, e); process.exitCode = 1; });

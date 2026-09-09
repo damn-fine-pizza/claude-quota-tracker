@@ -5,7 +5,7 @@ The fork exposes the quota-aware scheduler over stdio MCP.
 ## Enable pacing
 
 Copy `config.example.json` to your active config and enable, or use the
-dashboard's **Settings** panel (`claude-quota dashboard --open`) to edit
+dashboard's **Settings** panel (`llm-squeeze dashboard --open`) to edit
 these fields without touching any file:
 
 ```json
@@ -37,7 +37,7 @@ npm run mcp
 or, when using the installed/baked CLI:
 
 ```bash
-claude-quota mcp
+llm-squeeze mcp
 ```
 
 Example `.mcp.json` entry:
@@ -45,8 +45,8 @@ Example `.mcp.json` entry:
 ```json
 {
   "mcpServers": {
-    "claude-quota-tracker": {
-      "command": "claude-quota",
+    "llm-squeeze": {
+      "command": "llm-squeeze",
       "args": ["mcp"]
     }
   }
@@ -56,12 +56,12 @@ Example `.mcp.json` entry:
 or via the CLI, once, at user scope so it's available in every project:
 
 ```bash
-claude mcp add claude-quota-tracker --scope user -- claude-quota mcp
+claude mcp add llm-squeeze --scope user -- llm-squeeze mcp
 ```
 
 Multiple MCP clients that want to share **one** running server instead of
-each spawning their own `claude-quota mcp` process can use the local Streamable
-HTTP transport (`claude-quota mcp-http`, `http://127.0.0.1:47601/mcp`) instead —
+each spawning their own `llm-squeeze mcp` process can use the local Streamable
+HTTP transport (`llm-squeeze mcp-http`, `http://127.0.0.1:47601/mcp`) instead —
 same tools, same authorization rules, see [`MCP_HTTP.md`](MCP_HTTP.md).
 
 ## Tools
@@ -94,7 +94,7 @@ Returns the ideal consumption target, allowed target including slack, and the bi
 
 ### `set_pacing_config`
 
-Updates one or more pacing fields (`enabled`, `slackPct`, `sessionWindowHours`, `weeklyWindowHours`, `continuousEnabled`, `deadlineSafetyMinutes`, `adaptiveMinSamples`) without touching config.json by hand. Only the provided fields change; the rest keep their current value. Also editable from the dashboard's Settings panel (`claude-quota dashboard --open`).
+Updates one or more pacing fields (`enabled`, `slackPct`, `sessionWindowHours`, `weeklyWindowHours`, `continuousEnabled`, `deadlineSafetyMinutes`, `adaptiveMinSamples`) without touching config.json by hand. Only the provided fields change; the rest keep their current value. Also editable from the dashboard's Settings panel (`llm-squeeze dashboard --open`).
 
 ### `list_tasks`
 

@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-// Isolated QUOTA_TRACKER_HOME, set before config.js/dashboard.js is first
-// imported — never the real ~/.quota-tracker.
+// Isolated LLM_SQUEEZE_HOME, set before config.js/dashboard.js is first
+// imported — never the real ~/.llm-squeeze.
 const homeDir = mkdtempSync(join(tmpdir(), "qt-dashboard-settings-"));
-process.env.QUOTA_TRACKER_HOME = homeDir;
+process.env.LLM_SQUEEZE_HOME = homeDir;
 
 const { applySettingsPatch, currentSettings, originAllowed } = await import("../src/dashboard.js");
 const { CONFIG_PATH } = await import("../src/config.js");

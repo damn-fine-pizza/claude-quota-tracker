@@ -17,7 +17,7 @@ import {
 import { SIZE_ESTIMATES, type Task } from "./types.js";
 
 /** Shared with executor.ts's runNightLoop/runManualTask — one Claude execution system-wide at a time. */
-const LOCK_PATH = join(DATA_DIR, "claude-exec.lock");
+const LOCK_PATH = join(DATA_DIR, "scheduler.lock");
 
 function taskFitsNight(task: Task, nowMs: number, end: string, timeoutMinutes: number): boolean {
   return timeoutMinutes * 60_000 <= msUntilWindowEnd(nowMs, { end });

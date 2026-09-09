@@ -16,7 +16,7 @@ import {
   decideNudges, loadNotifyState, markSent, saveNotifyState,
   sendMacNotification, type NudgeInput,
 } from "./notify.js";
-import { allProviders } from "./providers/index.js";
+import { createDefaultProviderRegistry } from "./providers/index.js";
 import { Store } from "./store.js";
 import { WINDOW_DURATION_MS, type WindowReading } from "./types.js";
 
@@ -37,16 +37,16 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
   let anySuccess = false;
 
   try {
-    for (const provider of allProviders()) {
+    for (const source of createDefaultProviderRegistry().budgetSources()) {
       let readings: WindowReading[];
       try {
-        readings = await provider.fetch();
+        readings = await source.fetchBudgetSnapshot(nowMs);
       } catch (e) {
-        console.error(`[claude-quota-tracker] ${provider.id} fetch failed:`, e);
+        console.error(`[llm-squeeze] budget source ${source.id} fetch failed:`, e);
         continue;
       }
       anySuccess = true;
-      store.appendSnapshot(nowMs, provider.id, readings);
+      store.appendSnapshot(nowMs, source.providerId, readings);
 
       const windows: LatestWindow[] = [];
       const nudgeInputs: NudgeInput[] = [];
@@ -54,7 +54,7 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
         let forecast: Forecast | null = null;
         if (r.pct !== null && r.resetEpochMs !== null) {
           const windowDurationMs = WINDOW_DURATION_MS[r.windowKey];
-          const history = store.history(provider.id, r.windowKey, nowMs - windowDurationMs);
+          const history = store.history(source.providerId, r.windowKey, nowMs - windowDurationMs);
           forecast = forecastAtReset({
             nowMs,
             currentPct: r.pct,
@@ -72,7 +72,7 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
         }
         windows.push({ ...r, forecast });
       }
-      latest.providers[provider.id] = { windows };
+      latest.providers[source.providerId] = { windows };
 
       const state = loadNotifyState(NOTIFY_STATE_PATH);
       const nudges = decideNudges({ nowMs, items: nudgeInputs, config: config.notify, state });
@@ -91,18 +91,18 @@ export async function pollOnce(nowMs: number = Date.now()): Promise<LatestJson> 
     const ingestStore = new Store(DB_PATH);
     try {
       const r = ingestUsage(ingestStore, nowMs);
-      if (r.inserted > 0) console.log(`[claude-quota-tracker] ingested ${r.inserted} usage events`);
+      if (r.inserted > 0) console.log(`[llm-squeeze] ingested ${r.inserted} usage events`);
     } finally {
       ingestStore.close();
     }
   } catch (e) {
-    console.error("[claude-quota-tracker] usage ingest hook failed:", e);
+    console.error("[llm-squeeze] usage ingest hook failed:", e);
   }
 
   try {
     maybeSpawnExecutor(latest, config);
   } catch (e) {
-    console.error("[claude-quota-tracker] executor spawn hook failed:", e);
+    console.error("[llm-squeeze] executor spawn hook failed:", e);
   }
 
   return latest;
@@ -117,16 +117,16 @@ function spawnDetached(subcommand: "executor" | "paced-executor", logName: strin
     detached: true,
     stdio: ["ignore", log, log],
   });
-  child.on("error", (e) => console.error(`[claude-quota-tracker] ${subcommand} spawn failed:`, e));
+  child.on("error", (e) => console.error(`[llm-squeeze] ${subcommand} spawn failed:`, e));
   child.unref();
-  console.log(`[claude-quota-tracker] spawned ${subcommand} (pid ${child.pid})`);
+  console.log(`[llm-squeeze] spawned ${subcommand} (pid ${child.pid})`);
 }
 
 /**
  * When pacing/continuous scheduling is enabled, spawn the paced one-shot on
  * every successful quota poll if work exists. It performs all admission and
  * safety checks itself and runs at most one task, ensuring a fresh quota read
- * before the next task. Otherwise preserve the legacy night-executor behavior.
+ * before the next task. Otherwise preserve the current night-executor behavior.
  */
 function maybeSpawnExecutor(latest: LatestJson, config: Config): void {
   if (!config.executor.enabled) return;
@@ -168,7 +168,7 @@ function maybeSpawnExecutor(latest: LatestJson, config: Config): void {
         if (nowMs - last > 12 * 60 * 60 * 1000) {
           void sendMacNotification({
             mode: "scheduleHint", windowKey: "session_5h",
-            title: "quota-tracker: night window re-confirmation needed",
+            title: "llm-squeeze: night window re-confirmation needed",
             message: `${verdict.reason} — re-confirm with npm run enqueue.`,
           });
           state["nightWindow:reconfirm"] = nowMs;
@@ -188,10 +188,10 @@ if (isMain) {
   pollOnce()
     .then((latest) => {
       const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
-      console.log(`[claude-quota-tracker] polled ${n} window readings`);
+      console.log(`[llm-squeeze] polled ${n} window readings`);
     })
     .catch((e) => {
-      console.error("[claude-quota-tracker] poll failed:", e);
+      console.error("[llm-squeeze] poll failed:", e);
       process.exitCode = 1;
     });
 }

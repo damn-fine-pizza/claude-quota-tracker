@@ -48,7 +48,7 @@
     }
   },
   "update": {
-    "repository": "damn-fine-pizza/claude-quota-tracker",
+    "repository": "damn-fine-pizza/llm-squeeze",
     "channel": "stable"
   }
 }

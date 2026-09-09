@@ -52,7 +52,7 @@ function kpi(label,val){ return '<div class="kcard"><div class="klabel">'+label+
 
 function renderModels(md){
   var totals = md.totals||[];
-  if(!totals.length){ el('models').innerHTML = empty('no usage data yet (fills in after claude-quota ingest or poll)'); el('tokcat').innerHTML=''; return; }
+  if(!totals.length){ el('models').innerHTML = empty('no usage data yet (fills in after llm-squeeze ingest or poll)'); el('tokcat').innerHTML=''; return; }
   // Bar length by ACTIVE tokens (input+output+cache-create); cache_read is huge
   // and would otherwise flatten every bar to the same length.
   var maxActive = Math.max.apply(null, totals.map(function(t){return t.activeTokens;}).concat([1]));
@@ -276,11 +276,11 @@ main{max-width:1180px;margin:0 auto;padding:22px 24px;display:flex;flex-directio
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Claude Quota</title>
+<title>LLM Squeeze</title>
 <style>${STYLE}</style></head>
 <body>
 <header>
-  <h1>Claude Quota</h1>
+  <h1>LLM Squeeze</h1>
   <span id="plan" class="planbadge muted">loading…</span>
   <span id="updated" class="muted">loading…</span>
   <span id="scope"></span>

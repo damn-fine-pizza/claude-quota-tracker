@@ -2,12 +2,22 @@ name: CI
 
 on:
   push:
-    branches: [main, feature/quota-aware-pacing, fix/linux-portability, feature/mcp-http-and-runtime-tooling]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -24,21 +34,5 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - name: Typecheck
-        id: typecheck
-        shell: bash
-        run: |
-          set +e
-          npm run typecheck 2>&1 | tee typecheck.log
-          code=${PIPESTATUS[0]}
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Upload typecheck diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: typecheck-log-${{ matrix.os }}-node${{ matrix.node-version }}
-          path: typecheck.log
-      - name: Fail on typecheck errors
-        if: steps.typecheck.outputs.exit_code != '0'
-        run: exit 1
+      - run: npm run typecheck
       - run: npm test

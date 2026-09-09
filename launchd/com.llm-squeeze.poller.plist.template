@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Template only. `claude-quota install` (src/install.ts) generates the real plist
+<!-- Template only. `llm-squeeze install` (src/install.ts) generates the real plist
      with absolute paths filled in for the current user. Placeholders:
        __NODE__   absolute node path (e.g. /opt/homebrew/bin/node)
-       __CLI__    ~/.quota-tracker/lib/dist/cli.js
-       __HOME__   ~/.quota-tracker
+       __CLI__    ~/.llm-squeeze/lib/dist/cli.js
+       __HOME__   ~/.llm-squeeze
        __PATH__   PATH for the agent -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>com.quota-tracker.poller</string>
+  <key>Label</key><string>com.llm-squeeze.poller</string>
   <key>ProgramArguments</key>
   <array><string>__NODE__</string><string>__CLI__</string><string>poll</string></array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>__PATH__</string>
-    <key>QUOTA_TRACKER_HOME</key><string>__HOME__</string>
+    <key>LLM_SQUEEZE_HOME</key><string>__HOME__</string>
   </dict>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>

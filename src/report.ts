@@ -10,7 +10,7 @@ function fmt(ms: number | null): string {
   });
 }
 
-/** `claude-quota status [--json]` — current window usage + forecast + 7-day KPI. */
+/** `llm-squeeze status [--json]` — current window usage + forecast + 7-day KPI. */
 export function printStatus(argv: string[]): void {
   const asJson = argv.includes("--json");
   const store = new Store(DB_PATH);
@@ -18,7 +18,7 @@ export function printStatus(argv: string[]): void {
     const ov = overview(store, Date.now());
     if (asJson) { console.log(JSON.stringify(ov, null, 2)); return; }
     if (ov.windows.length === 0) {
-      console.log("No usage data yet — run `claude-quota poll` first.");
+      console.log("No usage data yet — run `llm-squeeze poll` first.");
       return;
     }
     console.log(`Plan: ${ov.planName ?? "not set — set it in the dashboard Settings panel or config.json (plan.name)"}`);
@@ -45,7 +45,7 @@ export function printStatus(argv: string[]): void {
 }
 
 /**
- * `claude-quota hint [--threshold N]` — a one-line nudge when the session window is
+ * `llm-squeeze hint [--threshold N]` — a one-line nudge when the session window is
  * filling (default ≥70%), else nothing. Designed for a UserPromptSubmit hook:
  * its stdout becomes context so Claude can proactively offer night scheduling.
  * Reads cached latest.json only (no claude call, no quota consumed).
@@ -61,14 +61,14 @@ export function printHint(argv: string[]): void {
     const eta = s.exhaustionEpochMs != null ? ` (100% by ${fmt(s.exhaustionEpochMs)})` : "";
     console.log(
       `[quota] session window ${s.pct}%${eta} — for heavy or non-urgent work, ` +
-      `consider scheduling it for the night window with \`claude-quota enqueue --night\`.`,
+      `consider scheduling it for the night window with \`llm-squeeze enqueue --night\`.`,
     );
   } finally {
     store.close();
   }
 }
 
-/** `claude-quota tasks [--json]` — the task queue and recent runs. */
+/** `llm-squeeze tasks [--json]` — the task queue and recent runs. */
 export function printTasks(argv: string[]): void {
   const asJson = argv.includes("--json");
   const store = new Store(DB_PATH);
