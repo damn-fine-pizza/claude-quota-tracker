@@ -71,13 +71,14 @@ export function zonedTimeToEpochMs(
 }
 
 /**
- * Parse a reset description like "Jun 11 at 10:49pm (Asia/Seoul)" or
- * "Jun 13 at 11am (Asia/Seoul)". The year is inferred: the closest occurrence
- * at or after (now - 1 day).
+ * Parse a reset description like "Jun 11 at 10:49pm (Asia/Seoul)" (older CLI
+ * wording) or "Sep 8, 9:20pm (Europe/Brussels)" (current CLI wording: comma
+ * after the day, no "at"). The year is inferred: the closest occurrence at or
+ * after (now - 1 day).
  */
 export function parseResetEpochMs(line: string, nowMs: number): number | null {
   const m = line.match(
-    /resets?\s+([A-Za-z]{3,9})\s+(\d{1,2})\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?/i,
+    /resets?\s+([A-Za-z]{3,9})\s+(\d{1,2}),?\s*(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?/i,
   );
   if (!m) return null;
   const month = MONTHS[m[1].slice(0, 3).toLowerCase()];

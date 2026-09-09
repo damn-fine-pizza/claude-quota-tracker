@@ -76,4 +76,19 @@ Current week (all models): 16% used · resets Jun 13 at 10:59am (Asia/Seoul)`;
     );
     expect(epoch).not.toBeNull(); // system-local fallback, still a valid epoch
   });
+
+  it("parses the comma-separated day format with no 'at' (current CLI wording)", () => {
+    // Observed 2026-09: "resets Sep 8, 9:20pm (Europe/Brussels)" — no "at",
+    // comma after the day. The older "Jun 11 at 10:49pm" wording must keep working too.
+    const out = `Current session: 97% used · resets Sep 8, 9:20pm (Europe/Brussels)
+Current week (all models): 35% used · resets Sep 14, 8pm (Europe/Brussels)`;
+    const readings = parseUsageOutput(out, Date.UTC(2026, 8, 8, 16, 22));
+    const byKey = Object.fromEntries(readings.map((r) => [r.windowKey, r]));
+    expect(byKey.session_5h.pct).toBe(97);
+    expect(byKey.session_5h.resetEpochMs).not.toBeNull();
+    // Sep 8 21:20 CEST (UTC+2) = Sep 8 19:20 UTC
+    expect(byKey.session_5h.resetEpochMs).toBe(Date.UTC(2026, 8, 8, 19, 20));
+    // Sep 14 20:00 CEST = Sep 14 18:00 UTC (no minutes given)
+    expect(byKey.weekly_all.resetEpochMs).toBe(Date.UTC(2026, 8, 14, 18, 0));
+  });
 });

@@ -5,7 +5,9 @@ import {
 import { createServer, get, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { DATA_DIR, DB_PATH, loadConfig, saveConfigPatch, type DashboardConfig } from "./config.js";
+import {
+  DATA_DIR, DB_PATH, loadConfig, saveConfigPatch, type DashboardConfig, type PlanConfig,
+} from "./config.js";
 import * as api from "./dashboard-api.js";
 import { DASHBOARD_HTML } from "./dashboard-html.js";
 import { bool, loadPacingConfig, mergePacingPatch, obj, type PacingConfig } from "./pacing-config.js";
@@ -81,18 +83,30 @@ function mergeDashboardPatch(current: DashboardConfig, patch: unknown): Dashboar
   return { ...current, autoOpen: bool(p.autoOpen, current.autoOpen) };
 }
 
-export interface Settings { pacing: PacingConfig; dashboard: DashboardConfig }
+/** `name` is free text (or null to clear it) — never gates any scheduling logic. */
+function mergePlanPatch(current: PlanConfig, patch: unknown): PlanConfig {
+  const p = obj(patch);
+  if (!("name" in p)) return current;
+  const v = p.name;
+  if (v !== null && typeof v !== "string") throw new Error("plan.name must be a string or null");
+  const trimmed = typeof v === "string" ? v.trim() : v;
+  return { name: trimmed === "" ? null : trimmed };
+}
+
+export interface Settings { pacing: PacingConfig; dashboard: DashboardConfig; plan: PlanConfig }
 export function currentSettings(): Settings {
-  return { pacing: loadPacingConfig(), dashboard: loadConfig().dashboard };
+  const cfg = loadConfig();
+  return { pacing: loadPacingConfig(), dashboard: cfg.dashboard, plan: cfg.plan };
 }
 /** Applies only the sections present in the request body; sections omitted from the body are left untouched on disk. */
 export function applySettingsPatch(body: unknown): Settings {
   const b = obj(body);
   const current = currentSettings();
   const next: Settings = { ...current };
-  const patch: Partial<Record<"pacing" | "dashboard", unknown>> = {};
+  const patch: Partial<Record<"pacing" | "dashboard" | "plan", unknown>> = {};
   if ("pacing" in b) { next.pacing = mergePacingPatch(current.pacing, b.pacing); patch.pacing = next.pacing; }
   if ("dashboard" in b) { next.dashboard = mergeDashboardPatch(current.dashboard, b.dashboard); patch.dashboard = next.dashboard; }
+  if ("plan" in b) { next.plan = mergePlanPatch(current.plan, b.plan); patch.plan = next.plan; }
   if (Object.keys(patch).length > 0) saveConfigPatch(patch);
   return next;
 }

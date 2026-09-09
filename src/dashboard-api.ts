@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { LATEST_JSON_PATH } from "./config.js";
+import { LATEST_JSON_PATH, loadConfig } from "./config.js";
 import { exhaustionEpochMs, type Forecast } from "./forecast.js";
 import { Store } from "./store.js";
 import {
@@ -62,6 +62,7 @@ export function overview(store: Store, nowMs: number) {
   return {
     generatedAtMs: latest?.generatedAtMs ?? null,
     ageMin: latest ? Math.round((nowMs - latest.generatedAtMs) / 60000) : null,
+    planName: loadConfig().plan.name,
     windows,
     kpi: {
       tokens7d: usage.totalTokens,

@@ -56,6 +56,7 @@ describe("dashboard-api empty state (no rows — must not throw)", () => {
     expect(ov.kpi.cost7d).toBe(0);
     expect(ov.kpi.runs7d).toBe(0);
     expect(Array.isArray(ov.windows)).toBe(true);
+    expect(ov.planName).toBeNull(); // no config.json in this test env -> DEFAULT_CONFIG
     expect(api.models(store, now - 1000, now).totals).toEqual([]);
     expect(api.contrib(store, now - 86400000, now).days.length).toBeGreaterThan(0);
     expect(api.estimates(store).summary).toEqual([]);
