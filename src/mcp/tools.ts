@@ -110,6 +110,8 @@ export function registerTools(server: McpServer): void {
         slackPct: pacingCfg.slackPct,
         sessionWindowMs: pacingCfg.sessionWindowHours * 3_600_000,
         weeklyWindowMs: pacingCfg.weeklyWindowHours * 3_600_000,
+        sessionPredictedPctAtReset: snapshot.sessionForecast?.predictedPctAtReset ?? null,
+        weeklyPredictedPctAtReset: snapshot.weeklyForecast?.predictedPctAtReset ?? null,
       });
       return text({ pacing, config: pacingCfg });
     },
