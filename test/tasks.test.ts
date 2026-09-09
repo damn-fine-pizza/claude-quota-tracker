@@ -82,6 +82,12 @@ describe("window guard (asymmetric, gate 3)", () => {
   it("blocks when usage data is missing", () => {
     expect(windowGuard({ ...OK_GUARD, sessionPct: null }, cfg).ok).toBe(false);
   });
+
+  it("blocks only new starts inside the reset safety margin", () => {
+    const v = windowGuard({ ...OK_GUARD, sessionResetMs: OK_GUARD.nowMs + 5 * 60_000 }, cfg);
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toContain("safety margin");
+  });
 });
 
 describe("latest.json freshness", () => {

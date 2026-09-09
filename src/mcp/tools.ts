@@ -7,6 +7,7 @@ import { loadPacingConfig, mergePacingPatch } from "../pacing-config.js";
 import { quotaPacingVerdict } from "../pacing.js";
 import { readQuotaSnapshot } from "../quota-state.js";
 import { SchedulerMetaStore } from "../scheduler-meta.js";
+import { planQueue } from "../queue-planner.js";
 import { Store } from "../store.js";
 import { TRIAGE, windowGuard } from "../tasks.js";
 
@@ -44,6 +45,10 @@ export function registerTools(server: McpServer): void {
         permission: z.enum(["read-only", "write-scoped", "destructive"]).default("read-only"),
         continuous: z.boolean().default(false)
           .describe("Explicitly opt this task into unattended execution outside the confirmed night window."),
+        title_markdown: z.string().optional(), provider: z.string().default("claude"),
+        profile: z.string().default("claude-default"), model: z.string().nullable().optional(),
+        category: z.string().nullable().optional(), manual_order: z.number().int().optional(),
+        queue_mode: z.enum(["manual", "priority"]).default("priority"),
       },
     },
     async (args) => {
@@ -69,6 +74,9 @@ export function registerTools(server: McpServer): void {
           intent: args.intent, deadlineMs: deadline,
           estimatedTokens: args.estimated_tokens ?? null,
           paused: false, continuousOk: continuous,
+          titleMarkdown: args.title_markdown ?? null, providerId: args.provider, profileId: args.profile,
+          model: args.model ?? null, category: args.category ?? null, manualOrder: args.manual_order ?? task.id,
+          queueMode: args.queue_mode,
         });
         return text({
           task, scheduling: m,
@@ -195,12 +203,15 @@ export function registerTools(server: McpServer): void {
         deadline: z.union([z.string(), z.number(), z.null()]).optional(),
         continuous: z.boolean().optional()
           .describe("Explicitly opt this task into unattended execution outside the confirmed night window."),
+        title_markdown: z.string().nullable().optional(), provider: z.string().optional(), profile: z.string().optional(),
+        model: z.string().nullable().optional(), category: z.string().nullable().optional(), manual_order: z.number().int().optional(),
+        queue_mode: z.enum(["manual", "priority"]).optional(),
       },
     },
-    async ({ task_id, prompt, cwd, size, permission, priority, intent, deadline, continuous }) => withTask(task_id, (store, meta) => {
+    async ({ task_id, prompt, cwd, size, permission, priority, intent, deadline, continuous, title_markdown, provider, profile, model, category, manual_order, queue_mode }) => withTask(task_id, (store, meta) => {
       if (
         prompt === undefined && cwd === undefined && size === undefined && permission === undefined &&
-        priority === undefined && intent === undefined && deadline === undefined && continuous === undefined
+        priority === undefined && intent === undefined && deadline === undefined && continuous === undefined && title_markdown === undefined && provider === undefined && profile === undefined && model === undefined && category === undefined && manual_order === undefined && queue_mode === undefined
       ) {
         throw new Error("provide at least one of prompt, cwd, size, permission, priority, intent, deadline, continuous");
       }
@@ -224,7 +235,7 @@ export function registerTools(server: McpServer): void {
       // Also re-run this when only `permission` changed: it may have flipped
       // unattendedOk (e.g. to destructive), which must zero out continuousOk
       // even though continuous/intent/deadline themselves weren't touched.
-      if (intent !== undefined || deadline !== undefined || continuous !== undefined || permission !== undefined) {
+      if (intent !== undefined || deadline !== undefined || continuous !== undefined || permission !== undefined || title_markdown !== undefined || provider !== undefined || profile !== undefined || model !== undefined || category !== undefined || manual_order !== undefined || queue_mode !== undefined) {
         const nextIntent = intent ?? scheduling.intent;
         const nextDeadline = deadline === undefined ? scheduling.deadlineMs : deadlineMs(deadline);
         if (nextIntent === "deadline" && nextDeadline == null) throw new Error("deadline intent requires deadline");
@@ -235,10 +246,46 @@ export function registerTools(server: McpServer): void {
           intent: nextIntent, deadlineMs: nextDeadline,
           estimatedTokens: scheduling.estimatedTokens,
           paused: scheduling.paused, continuousOk: nextContinuous,
+          titleMarkdown: title_markdown === undefined ? scheduling.titleMarkdown : title_markdown,
+          providerId: provider ?? scheduling.providerId, profileId: profile ?? scheduling.profileId,
+          model: model === undefined ? scheduling.model : model, category: category === undefined ? scheduling.category : category,
+          manualOrder: manual_order ?? scheduling.manualOrder, queueMode: queue_mode ?? scheduling.queueMode,
         });
       }
       return text({ task, scheduling });
     }),
+  );
+
+  server.registerTool(
+    "preview_queue",
+    { description: "Pure deterministic preview of the next queue decisions.", inputSchema: { mode: z.enum(["manual", "priority"]).default("priority") } },
+    async ({ mode }) => {
+      const store = new Store(DB_PATH); const meta = new SchedulerMetaStore(DB_PATH);
+      try {
+        const tasks = store.listTasks(["queued", "carried_over"]); const metas = new Map(tasks.map((t) => [t.id, meta.getOrDefault(t.id)]));
+        const estimates = new Map(tasks.map((t) => [t.id, metas.get(t.id)!.estimatedTokens ?? 0]));
+        return text({ mode, decisions: planQueue({ tasks, meta: metas, mode, nowMs: Date.now(), cutoffMs: null, estimates }) });
+      } finally { meta.close(); store.close(); }
+    },
+  );
+
+  server.registerTool(
+    "run_queue",
+    { description: "Run the first task admitted by the same deterministic planner used for preview, recording a receipt.", inputSchema: { mode: z.enum(["manual", "priority"]).default("priority") } },
+    async ({ mode }) => {
+      const store = new Store(DB_PATH); const meta = new SchedulerMetaStore(DB_PATH);
+      try {
+        const nowMs = Date.now(); const tasks = store.listTasks(["queued", "carried_over"]);
+        const metas = new Map(tasks.map((t) => [t.id, meta.getOrDefault(t.id)]));
+        const estimates = new Map(tasks.map((t) => [t.id, metas.get(t.id)!.estimatedTokens ?? 0]));
+        const decisions = planQueue({ tasks, meta: metas, mode, nowMs, cutoffMs: null, estimates });
+        const selected = decisions.find((d) => d.ok);
+        if (!selected) return text({ mode, decisions, run: null });
+        meta.recordReceipt({ ts: nowMs, taskId: selected.taskId, providerId: selected.providerId, profileId: selected.profileId, estimateTokens: selected.estimateTokens, policy: mode, reasonCode: selected.reasonCode, budgetSnapshot: readQuotaSnapshot(nowMs) });
+        const result = await runManualTask(selected.taskId);
+        return text({ mode, decisions, run: { taskId: selected.taskId, ...result } });
+      } finally { meta.close(); store.close(); }
+    },
   );
 
   server.registerTool(

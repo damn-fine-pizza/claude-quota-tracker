@@ -18,6 +18,7 @@
     "enabled": true,
     "sessionGuardPct": 80,
     "weeklyGuardPct": 95,
+    "resetSafetyMinutes": 10,
     "maxAttempts": 3,
     "taskTimeoutMinutes": { "xs": 5, "s": 10, "m": 20, "l": 40, "xl": 60 },
     "lowUsageMinDays": 3,

@@ -38,6 +38,8 @@ export interface ExecutorConfig {
   sessionGuardPct: number;
   /** Weekly window is the fill target — guard leniently, near-exhaustion only. */
   weeklyGuardPct: number;
+  /** Do not start new tasks this close to either observed quota reset. */
+  resetSafetyMinutes: number;
   /** Tasks exceeding this many attempts go to terminal `failed` instead of carrying over. */
   maxAttempts: number;
   /** Per-size execFile timeout in minutes. */
@@ -131,6 +133,7 @@ export const DEFAULT_CONFIG: Config = {
     enabled: true,
     sessionGuardPct: 80,
     weeklyGuardPct: 95,
+    resetSafetyMinutes: 10,
     maxAttempts: 3,
     taskTimeoutMinutes: { xs: 5, s: 10, m: 20, l: 40, xl: 60 },
     lowUsageMinDays: 3,

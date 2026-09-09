@@ -14,6 +14,8 @@ import { bool, loadPacingConfig, mergePacingPatch, obj, type PacingConfig } from
 import { openBrowserUrl } from "./platform.js";
 import { isSea } from "./sea.js";
 import { Store } from "./store.js";
+import { SchedulerMetaStore } from "./scheduler-meta.js";
+import { TRIAGE } from "./tasks.js";
 
 const LOCK_PATH = join(DATA_DIR, "dashboard.lock");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -78,6 +80,28 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+async function handleTaskApi(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  const parts = url.pathname.split("/").filter(Boolean); const id = parts[2] ? Number(parts[2]) : null;
+  const store = new Store(DB_PATH); const meta = new SchedulerMetaStore(DB_PATH);
+  try {
+    if (req.method === "GET" && id === null) return json(res, 200, store.listTasks().map((task) => ({ task, scheduling: meta.getOrDefault(task.id) })));
+    const body = await readJsonBody(req) as Record<string, unknown>;
+    if (req.method === "POST" && id === null) {
+      const prompt = String(body.prompt ?? "").trim(); const cwd = String(body.cwd ?? "").trim();
+      if (!prompt || !cwd) return json(res, 400, { error: "prompt and cwd are required" });
+      const permission = (body.permission === "write-scoped" || body.permission === "destructive") ? body.permission : "read-only";
+      const rule = TRIAGE[permission]; const now = Date.now();
+      const task = store.enqueueTask(now, { prompt, cwd, size: (body.size as never) ?? "m", priority: Number(body.priority ?? 0), deferOk: true, permissionClass: permission, permissionMode: rule.permissionMode, unattendedOk: rule.unattendedOk, scheduledWindow: "night" });
+      const scheduling = meta.upsert(task.id, now, { titleMarkdown: typeof body.title_markdown === "string" ? body.title_markdown : null, providerId: typeof body.provider === "string" ? body.provider : "claude", profileId: typeof body.profile === "string" ? body.profile : "claude-default", category: typeof body.category === "string" ? body.category : null, manualOrder: task.id });
+      return json(res, 201, { task, scheduling });
+    }
+    if (id === null || !store.getTask(id)) return json(res, 404, { error: "task not found" });
+    if (req.method === "DELETE") { const task = store.getTask(id)!; if (task.status === "running") return json(res, 409, { error: "task is running" }); meta.delete(id); return json(res, 200, { deleted: store.deleteTask(id), taskId: id }); }
+    if (req.method === "PATCH") { const current = meta.getOrDefault(id); const scheduling = meta.upsert(id, Date.now(), { ...current, paused: typeof body.paused === "boolean" ? body.paused : current.paused, titleMarkdown: body.title_markdown === undefined ? current.titleMarkdown : (body.title_markdown as string | null), category: body.category === undefined ? current.category : (body.category as string | null), manualOrder: typeof body.manual_order === "number" ? body.manual_order : current.manualOrder, queueMode: body.queue_mode === "manual" ? "manual" : body.queue_mode === "priority" ? "priority" : current.queueMode }); return json(res, 200, { task: store.getTask(id), scheduling }); }
+    return json(res, 405, { error: "method not allowed" });
+  } catch (e) { return json(res, 400, { error: (e as Error).message }); } finally { meta.close(); store.close(); }
+}
+
 function mergeDashboardPatch(current: DashboardConfig, patch: unknown): DashboardConfig {
   const p = obj(patch);
   return { ...current, autoOpen: bool(p.autoOpen, current.autoOpen) };
@@ -130,6 +154,10 @@ function startServer(port: number, token: string): void {
         return;
       }
       return json(res, 405, { error: "method not allowed" });
+    }
+    if (url.pathname === "/api/tasks" || url.pathname.startsWith("/api/tasks/")) {
+      if (req.method !== "GET" && !originAllowed(req.headers.origin, port)) return json(res, 403, { error: "origin not allowed" });
+      void handleTaskApi(req, res, url); return;
     }
     if (req.method !== "GET") return json(res, 405, { error: "method not allowed" });
     if (url.pathname === "/healthz") return json(res, 200, { ok: true, pid: process.pid, token, startedAtMs });

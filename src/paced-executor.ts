@@ -10,6 +10,7 @@ import { readQuotaSnapshot } from "./quota-state.js";
 import { SchedulerMetaStore } from "./scheduler-meta.js";
 import { admitTask, compareScheduledTasks, continuousEligible } from "./scheduler-policy.js";
 import { Store } from "./store.js";
+import { planQueue } from "./queue-planner.js";
 import {
   currentTimezone, inNightWindow, isLatestFresh, msUntilWindowEnd,
   nightWindowConfirmed, windowGuard,
@@ -90,7 +91,17 @@ export async function runPacedOnce(): Promise<boolean> {
       })
       .sort(compareScheduledTasks);
 
-    for (const { task, meta } of candidates) {
+    const candidateMeta = new Map(candidates.map(({ task, meta }) => [task.id, meta]));
+    const plannerMode = candidates[0]?.meta.queueMode ?? "priority";
+    const planned = planQueue({
+      tasks: candidates.map(({ task }) => task), meta: candidateMeta, mode: plannerMode, nowMs,
+      cutoffMs: null, estimates: new Map(candidates.map(({ task, meta }) => [task.id, meta.estimatedTokens ?? 0])),
+    });
+    const orderedCandidates = planned.filter((decision) => decision.ok)
+      .map((decision) => candidates.find(({ task }) => task.id === decision.taskId)!)
+      .filter(Boolean);
+
+    for (const { task, meta } of orderedCandidates) {
       const estimate = estimateTaskTokens({
         size: task.size,
         overrideTokens: meta.estimatedTokens,
@@ -114,6 +125,8 @@ export async function runPacedOnce(): Promise<boolean> {
 
       const claimed = store.claimTaskById(nowMs, task.id);
       if (!claimed) continue;
+      metaStore.recordReceipt({ ts: nowMs, taskId: task.id, providerId: meta.providerId, profileId: meta.profileId,
+        estimateTokens: estimate.tokens, policy: plannerMode, reasonCode: admission.reason, budgetSnapshot: latest });
       console.log(
         `[paced-executor] task #${task.id} ${meta.intent}; ${admission.reason}; ` +
         `estimate=${Math.round(estimate.tokens / 1000)}K (${estimate.source})`,

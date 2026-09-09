@@ -74,7 +74,7 @@ describe("mcp-http", () => {
     const names = listBody.result.tools.map((t) => t.name).sort();
     expect(names).toEqual([
       "delete_task", "get_pacing_status", "get_quota_status", "list_tasks",
-      "pause_task", "resume_task", "run_now", "set_pacing_config", "submit_task", "update_task",
+      "pause_task", "preview_queue", "resume_task", "run_now", "run_queue", "set_pacing_config", "submit_task", "update_task",
     ]);
 
     const call = await rpc(server.url, {
