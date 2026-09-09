@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isSea } from "./sea.js";
 import type { TaskSize } from "./types.js";
+import type { RoutingPolicy } from "./routing-policy.js";
 
 export interface QuietHours {
   /** "HH:MM" local time. Range may cross midnight (e.g. 23:00-08:00). */
@@ -110,6 +111,7 @@ export interface Config {
   mcp: McpConfig;
   update: UpdateConfig;
   plan: PlanConfig;
+  routing: RoutingPolicy;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -155,6 +157,7 @@ export const DEFAULT_CONFIG: Config = {
     channel: "stable",
   },
   plan: { name: null },
+  routing: { rules: [], reserveEnabled: false, reservedProfile: null },
 };
 
 /**
@@ -214,6 +217,7 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     update: { ...DEFAULT_CONFIG.update, ...(raw.update ?? {}) },
     plan: { ...DEFAULT_CONFIG.plan, ...(raw.plan ?? {}) },
+    routing: { ...DEFAULT_CONFIG.routing, ...(raw.routing ?? {}) },
   };
 }
 

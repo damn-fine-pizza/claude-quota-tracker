@@ -14,6 +14,8 @@ import { bool, loadPacingConfig, mergePacingPatch, obj, type PacingConfig } from
 import { openBrowserUrl } from "./platform.js";
 import { isSea } from "./sea.js";
 import { Store } from "./store.js";
+import { TimerStore } from "./timers.js";
+import { DEFAULT_ROUTING_POLICY, validateRoutingPolicy } from "./routing-policy.js";
 import { SchedulerMetaStore } from "./scheduler-meta.js";
 import { TRIAGE } from "./tasks.js";
 
@@ -47,6 +49,7 @@ function handleApi(store: Store, url: URL, res: ServerResponse): void {
     case "/api/estimates": return json(res, 200, api.estimates(store));
     case "/api/queue": return json(res, 200, api.queue(store));
     case "/api/scheduler-metrics": return json(res, 200, api.schedulerMetrics(store));
+    case "/api/backlog": return json(res, 200, store.listTasks());
     default: return json(res, 404, { error: "not found" });
   }
 }
@@ -155,6 +158,11 @@ function startServer(port: number, token: string): void {
         return;
       }
       return json(res, 405, { error: "method not allowed" });
+    }
+    if (url.pathname === "/api/timers" && req.method === "GET") { const t=new TimerStore(); try{return json(res,200,t.list());}finally{t.close();} }
+    if (url.pathname === "/api/routing") {
+      if (req.method === "GET") return json(res,200,loadConfig().routing ?? DEFAULT_ROUTING_POLICY);
+      if (req.method === "POST") { if (!originAllowed(req.headers.origin, port)) return json(res,403,{error:"origin not allowed"}); void readJsonBody(req).then((b)=>json(res,200,saveConfigPatch({routing:validateRoutingPolicy(b as any)}))).catch((e)=>json(res,400,{error:String(e)})); return; }
     }
     if (url.pathname === "/api/tasks" || url.pathname.startsWith("/api/tasks/")) {
       if (req.method !== "GET" && !originAllowed(req.headers.origin, port)) return json(res, 403, { error: "origin not allowed" });
