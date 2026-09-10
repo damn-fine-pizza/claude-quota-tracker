@@ -64,7 +64,10 @@ export function createDefaultProviderRegistry(options: DefaultRegistryOptions = 
     .registerExecutionBackend(new ClaudeExecutionBackend({
       claudeBin: options.claudeBin,
       exec: options.exec,
-    }));
+    }))
+    // Codex has no supported budget source yet, so resolveBackend permits it
+    // only for explicit manual runs.
+    .registerExecutionBackend(new CodexExecutionBackend(options.exec));
 }
 
 export { ClaudeBudgetSource, ClaudeExecutionBackend };

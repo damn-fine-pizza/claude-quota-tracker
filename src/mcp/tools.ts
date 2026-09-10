@@ -13,6 +13,8 @@ import { TRIAGE, windowGuard } from "../tasks.js";
 import { TimerStore } from "../timers.js";
 import { loadOverride, setOverride } from "../override.js";
 import { validateRoutingPolicy } from "../routing-policy.js";
+import { createDefaultProviderRegistry } from "../providers/index.js";
+import { resolveBackend } from "../dispatch.js";
 
 function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -167,6 +169,18 @@ export function registerTools(server: McpServer): void {
     },
   );
 
+  server.registerTool(
+    "list_planner_receipts",
+    {
+      description: "Return recent deterministic planner decisions and their budget snapshots for audit/debugging.",
+      inputSchema: { limit: z.number().int().min(1).max(1000).default(100) },
+    },
+    async ({ limit }) => {
+      const meta = new SchedulerMetaStore(DB_PATH);
+      try { return text(meta.listReceipts(limit)); } finally { meta.close(); }
+    },
+  );
+
   server.registerTool("list_timers", { description: "List persistent timestamp and cron timers.", inputSchema: {} }, async () => { const t=new TimerStore(); try{return text(t.list());}finally{t.close();} });
   server.registerTool("create_timer", { description: "Create a persistent timestamp or cron timer.", inputSchema: { kind:z.enum(["timestamp","cron"]), expression:z.string().min(1), task_id:z.number().nullable().optional() } }, async (a) => { const t=new TimerStore(); try{return text(t.add(a.kind,a.expression,a.task_id??null));}finally{t.close();} });
   server.registerTool("update_timer", { description: "Update or pause a timer.", inputSchema: { timer_id:z.number(), expression:z.string().optional(), paused:z.boolean().optional() } }, async (a) => { const t=new TimerStore(); try { const x=t.update(a.timer_id,{expression:a.expression,paused:a.paused}); if(!x)throw new Error("timer not found"); return text(x); } finally {t.close();} });
@@ -278,7 +292,13 @@ export function registerTools(server: McpServer): void {
       try {
         const tasks = store.listTasks(["queued", "carried_over"]); const metas = new Map(tasks.map((t) => [t.id, meta.getOrDefault(t.id)]));
         const estimates = new Map(tasks.map((t) => [t.id, metas.get(t.id)!.estimatedTokens ?? 0]));
-        return text({ mode, decisions: planQueue({ tasks, meta: metas, mode, nowMs: Date.now(), cutoffMs: null, estimates }) });
+        const registry = createDefaultProviderRegistry();
+        return text({ mode, decisions: planQueue({ tasks, meta: metas, mode, nowMs: Date.now(), cutoffMs: null, estimates,
+          dispatchReason: (task, scheduling, providerId, profileId) => {
+            const verdict = resolveBackend(registry, task, { ...scheduling, providerId, profileId }, "automatic");
+            return verdict.ok ? null : verdict.reasonCode;
+          },
+        }) });
       } finally { meta.close(); store.close(); }
     },
   );
@@ -292,11 +312,18 @@ export function registerTools(server: McpServer): void {
         const nowMs = Date.now(); const tasks = store.listTasks(["queued", "carried_over"]);
         const metas = new Map(tasks.map((t) => [t.id, meta.getOrDefault(t.id)]));
         const estimates = new Map(tasks.map((t) => [t.id, metas.get(t.id)!.estimatedTokens ?? 0]));
-        const decisions = planQueue({ tasks, meta: metas, mode, nowMs, cutoffMs: null, estimates });
+        const registry = createDefaultProviderRegistry();
+        const decisions = planQueue({ tasks, meta: metas, mode, nowMs, cutoffMs: null, estimates,
+          dispatchReason: (task, scheduling, providerId, profileId) => {
+            const verdict = resolveBackend(registry, task, { ...scheduling, providerId, profileId }, "automatic");
+            return verdict.ok ? null : verdict.reasonCode;
+          },
+        });
         const selected = decisions.find((d) => d.ok);
         if (!selected) return text({ mode, decisions, run: null });
-        meta.recordReceipt({ ts: nowMs, taskId: selected.taskId, providerId: selected.providerId, profileId: selected.profileId, estimateTokens: selected.estimateTokens, policy: mode, reasonCode: selected.reasonCode, budgetSnapshot: readQuotaSnapshot(nowMs) });
-        const result = await runManualTask(selected.taskId);
+        const budgetSnapshot = readQuotaSnapshot(nowMs);
+        const receiptId = meta.recordReceipt({ ts: nowMs, taskId: selected.taskId, providerId: selected.providerId, profileId: selected.profileId, estimateTokens: selected.estimateTokens, policy: mode, reasonCode: selected.reasonCode, budgetSnapshot });
+        const result = await runManualTask(selected.taskId, { runContext: { providerId: selected.providerId, profileId: selected.profileId, backendId: "selected-by-dispatch", receiptId, budgetSnapshot } });
         return text({ mode, decisions, run: { taskId: selected.taskId, ...result } });
       } finally { meta.close(); store.close(); }
     },

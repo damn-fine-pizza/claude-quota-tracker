@@ -12,4 +12,13 @@ describe("planQueue", () => {
     expect(planQueue({ tasks, meta: metas, mode: "manual", nowMs: 100, cutoffMs: null, estimates: new Map() }).map((d) => d.taskId)).toEqual([2, 1]);
     expect(planQueue({ tasks, meta: metas, mode: "manual", nowMs: 100, cutoffMs: 100, estimates: new Map() }).every((d) => d.reasonCode === "cutoff_reached")).toBe(true);
   });
+
+  it("surfaces dispatch denials without making a task eligible", () => {
+    const tasks = [task(1, 0)]; const metas = new Map([[1, meta(1, 1)]]);
+    const [decision] = planQueue({
+      tasks, meta: metas, mode: "priority", nowMs: 100, cutoffMs: null, estimates: new Map(),
+      dispatchReason: () => "budget_unavailable",
+    });
+    expect(decision).toMatchObject({ ok: false, reasonCode: "budget_unavailable" });
+  });
 });

@@ -51,15 +51,18 @@ describe("ProviderRegistry", () => {
     expect(() => registry.registerExecutionBackend(executionBackend("same"))).toThrow("duplicate execution backend");
   });
 
-  it("builds the default Claude profile with both independent capabilities", () => {
+  it("builds an automatic Claude profile and a separate manual-only Codex backend", () => {
     const registry = createDefaultProviderRegistry();
     expect(registry.budgetSources()).toHaveLength(1);
-    expect(registry.executionBackends()).toHaveLength(1);
+    expect(registry.executionBackends()).toHaveLength(2);
     expect(registry.budgetSources()[0]).toMatchObject({
       id: "claude-cli-usage", providerId: "claude", profileId: "claude-default",
     });
     expect(registry.requireExecutionBackend("claude-cli")).toMatchObject({
       providerId: "claude", profileId: "claude-default",
+    });
+    expect(registry.requireExecutionBackend("codex-exec")).toMatchObject({
+      providerId: "codex", profileId: "codex-manual",
     });
   });
 

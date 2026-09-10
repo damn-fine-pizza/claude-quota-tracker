@@ -43,6 +43,7 @@ export class SchedulerMetaStore {
   constructor(path: string = DB_PATH) {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL");
+    this.db.exec("PRAGMA foreign_keys = ON");
     this.db.exec("PRAGMA busy_timeout = 5000");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS task_schedule_meta (
@@ -117,8 +118,32 @@ export class SchedulerMetaStore {
   }
 
   upsert(taskId: number, nowMs: number, input: TaskScheduleMetaInput): TaskScheduleMeta {
-    const intent = input.intent ?? "opportunistic";
-    if (intent === "deadline" && input.deadlineMs == null) {
+    // `TaskScheduleMetaInput` is deliberately a patch shape. Keeping this
+    // merge here (rather than requiring every caller to re-send all fields)
+    // prevents a future endpoint from silently resetting routing, ordering or
+    // pause state while changing one value.
+    const current = this.get(taskId);
+    // Nullable fields need an own-property check: `null` means “clear this
+    // value”, while an omitted property means “keep the previous value”.
+    const nullable = <K extends "deadlineMs" | "estimatedTokens" | "titleMarkdown" | "model" | "category">(
+      key: K,
+      previous: TaskScheduleMeta[K] | null,
+    ) => Object.hasOwn(input, key) ? input[key] ?? null : previous;
+    const next = {
+      intent: input.intent ?? current?.intent ?? ("opportunistic" as SchedulingIntent),
+      deadlineMs: nullable("deadlineMs", current?.deadlineMs ?? null),
+      estimatedTokens: nullable("estimatedTokens", current?.estimatedTokens ?? null),
+      paused: input.paused ?? current?.paused ?? false,
+      continuousOk: input.continuousOk ?? current?.continuousOk ?? false,
+      titleMarkdown: nullable("titleMarkdown", current?.titleMarkdown ?? null),
+      providerId: input.providerId ?? current?.providerId ?? "claude",
+      profileId: input.profileId ?? current?.profileId ?? "claude-default",
+      model: nullable("model", current?.model ?? null),
+      category: nullable("category", current?.category ?? null),
+      manualOrder: input.manualOrder ?? current?.manualOrder ?? 0,
+      queueMode: input.queueMode ?? current?.queueMode ?? ("priority" as QueueMode),
+    };
+    if (next.intent === "deadline" && next.deadlineMs == null) {
       throw new Error("deadline intent requires deadlineMs");
     }
     const r = this.db.prepare(`
@@ -136,10 +161,10 @@ export class SchedulerMetaStore {
         updated_ts=excluded.updated_ts
       RETURNING *
     `).get(
-      taskId, intent, input.deadlineMs ?? null, input.estimatedTokens ?? null,
-      input.paused ? 1 : 0, input.continuousOk ? 1 : 0,
-      input.titleMarkdown ?? null, input.providerId ?? "claude", input.profileId ?? "claude-default",
-      input.model ?? null, input.category ?? null, input.manualOrder ?? 0, input.queueMode ?? "priority", nowMs, nowMs,
+      taskId, next.intent, next.deadlineMs, next.estimatedTokens,
+      next.paused ? 1 : 0, next.continuousOk ? 1 : 0,
+      next.titleMarkdown, next.providerId, next.profileId,
+      next.model, next.category, next.manualOrder, next.queueMode, nowMs, nowMs,
     ) as Record<string, unknown>;
     return this.row(r);
   }
@@ -160,9 +185,33 @@ export class SchedulerMetaStore {
     return rows.map((r) => this.row(r));
   }
 
-  recordReceipt(args: { ts: number; taskId: number; providerId: string; profileId: string; estimateTokens: number; policy: string; reasonCode: string; budgetSnapshot: unknown }): void {
-    this.db.prepare("INSERT INTO planner_receipts (ts, task_id, provider_id, profile_id, estimate_tokens, policy, reason_code, budget_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+  recordReceipt(args: { ts: number; taskId: number; providerId: string; profileId: string; estimateTokens: number; policy: string; reasonCode: string; budgetSnapshot: unknown }): number {
+    const result = this.db.prepare("INSERT INTO planner_receipts (ts, task_id, provider_id, profile_id, estimate_tokens, policy, reason_code, budget_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
       .run(args.ts, args.taskId, args.providerId, args.profileId, args.estimateTokens, args.policy, args.reasonCode, JSON.stringify(args.budgetSnapshot));
+    return Number(result.lastInsertRowid);
+  }
+
+  /** Latest recorded planner decisions for explainable runs. */
+  listReceipts(limit = 100): Array<{
+    id: number; ts: number; taskId: number; providerId: string; profileId: string;
+    estimateTokens: number; policy: string; reasonCode: string; budgetSnapshot: unknown;
+  }> {
+    const safeLimit = Math.max(1, Math.min(Math.floor(limit), 1_000));
+    const rows = this.db.prepare(
+      `SELECT id, ts, task_id, provider_id, profile_id, estimate_tokens,
+              policy, reason_code, budget_snapshot
+       FROM planner_receipts ORDER BY id DESC LIMIT ?`,
+    ).all(safeLimit) as Array<Record<string, unknown>>;
+    return rows.map((row) => {
+      let budgetSnapshot: unknown = null;
+      try { budgetSnapshot = JSON.parse(row.budget_snapshot as string); } catch { /* legacy/corrupt receipt remains inspectable */ }
+      return {
+        id: row.id as number, ts: row.ts as number, taskId: row.task_id as number,
+        providerId: row.provider_id as string, profileId: row.profile_id as string,
+        estimateTokens: row.estimate_tokens as number, policy: row.policy as string,
+        reasonCode: row.reason_code as string, budgetSnapshot,
+      };
+    });
   }
 
   close(): void { this.db.close(); }
