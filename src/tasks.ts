@@ -236,7 +236,7 @@ export interface GuardInput {
  * target so it only blocks near exhaustion.
  */
 export function windowGuard(input: GuardInput, cfg: ExecutorConfig): GateVerdict {
-  const { sessionPct, weeklyPct } = input;
+  const { sessionPct, weeklyPct, nowMs } = input;
   if (sessionPct === null || weeklyPct === null) {
     return { ok: false, reason: "usage data missing (cannot read session/weekly pct)" };
   }
@@ -251,6 +251,12 @@ export function windowGuard(input: GuardInput, cfg: ExecutorConfig): GateVerdict
       ok: false,
       reason: `weekly window at ${weeklyPct}% >= guard ${cfg.weeklyGuardPct}%; pause until reset`,
     };
+  }
+  const marginMs = cfg.resetSafetyMinutes * 60_000;
+  for (const [name, reset] of [["session", input.sessionResetMs], ["weekly", input.weeklyResetMs]] as const) {
+    if (reset !== null && reset > nowMs && reset - nowMs <= marginMs) {
+      return { ok: false, reason: `${name} reset is within ${cfg.resetSafetyMinutes}m safety margin; no new starts` };
+    }
   }
   return { ok: true };
 }

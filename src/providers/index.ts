@@ -1,6 +1,7 @@
 import type { ExecFn } from "../runner.js";
 import { ClaudeBudgetSource } from "./claude-budget.js";
 import { ClaudeExecutionBackend } from "./claude-execution.js";
+import { CodexExecutionBackend } from "./codex-execution.js";
 import type { BudgetSource, ExecutionBackend } from "./contracts.js";
 
 export class ProviderRegistry {
@@ -29,6 +30,12 @@ export class ProviderRegistry {
     return source;
   }
 
+  budgetSourceFor(providerId: string, profileId: string): BudgetSource | null {
+    return this.budgetSources().find((source) =>
+      source.providerId === providerId && source.profileId === profileId,
+    ) ?? null;
+  }
+
   executionBackends(): ExecutionBackend[] {
     return [...this.executionBackendsById.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
@@ -37,6 +44,12 @@ export class ProviderRegistry {
     const backend = this.executionBackendsById.get(id);
     if (!backend) throw new Error(`execution backend not registered: ${id}`);
     return backend;
+  }
+
+  executionBackendFor(providerId: string, profileId: string): ExecutionBackend | null {
+    return this.executionBackends().find((backend) =>
+      backend.providerId === providerId && backend.profileId === profileId,
+    ) ?? null;
   }
 }
 
@@ -51,10 +64,14 @@ export function createDefaultProviderRegistry(options: DefaultRegistryOptions = 
     .registerExecutionBackend(new ClaudeExecutionBackend({
       claudeBin: options.claudeBin,
       exec: options.exec,
-    }));
+    }))
+    // Codex has no supported budget source yet, so resolveBackend permits it
+    // only for explicit manual runs.
+    .registerExecutionBackend(new CodexExecutionBackend(options.exec));
 }
 
 export { ClaudeBudgetSource, ClaudeExecutionBackend };
+export { CodexExecutionBackend };
 export type {
   BudgetSource, ExecutionBackend, ExecutionCapabilities, ExecutionOutcome, ExecutionRequest,
 } from "./contracts.js";

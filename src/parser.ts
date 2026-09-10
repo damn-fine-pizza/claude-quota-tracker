@@ -1,4 +1,4 @@
-import type { WindowKey, WindowReading } from "./types.js";
+import { CLAUDE_WINDOW_DURATION_MS, type WindowKey, type WindowReading } from "./types.js";
 
 const MONTHS: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
@@ -116,6 +116,13 @@ export function parseUsageOutput(text: string, nowMs: number): WindowReading[] {
     seen.add(key);
     readings.push({
       windowKey: key,
+      name: key === "session_5h" ? "Session (5h)"
+        : key === "weekly_all" ? "Week (all models)" : "Week (Sonnet)",
+      unit: "percent",
+      value: parsePct(line),
+      source: "claude-cli-usage",
+      reliability: "observed",
+      durationMs: CLAUDE_WINDOW_DURATION_MS[key] ?? null,
       pct: parsePct(line),
       resetEpochMs: parseResetEpochMs(line, nowMs),
       raw: line,

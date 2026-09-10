@@ -54,4 +54,35 @@ describe("SchedulerMetaStore.delete", () => {
     meta.close();
     store.close();
   });
+
+  it("preserves unspecified scheduling fields when applying a patch", () => {
+    const dbPath = freshDbPath();
+    const store = new Store(dbPath);
+    const task = store.enqueueTask(100, taskInput());
+    const meta = new SchedulerMetaStore(dbPath);
+    meta.upsert(task.id, 100, {
+      intent: "opportunistic", paused: false, continuousOk: true,
+      providerId: "claude", profileId: "claude-default", category: "review",
+      manualOrder: 7, queueMode: "manual",
+    });
+
+    const updated = meta.upsert(task.id, 200, { paused: true });
+    expect(updated).toMatchObject({
+      paused: true, continuousOk: true, providerId: "claude",
+      profileId: "claude-default", category: "review", manualOrder: 7, queueMode: "manual",
+    });
+    meta.close();
+    store.close();
+  });
+
+  it("returns receipts with a parsed budget snapshot", () => {
+    const dbPath = freshDbPath();
+    const store = new Store(dbPath);
+    const task = store.enqueueTask(100, taskInput());
+    const meta = new SchedulerMetaStore(dbPath);
+    meta.recordReceipt({ ts: 200, taskId: task.id, providerId: "claude", profileId: "claude-default", estimateTokens: 10, policy: "priority", reasonCode: "eligible", budgetSnapshot: { sessionPct: 12 } });
+    expect(meta.listReceipts()).toEqual([expect.objectContaining({ taskId: task.id, budgetSnapshot: { sessionPct: 12 } })]);
+    meta.close();
+    store.close();
+  });
 });

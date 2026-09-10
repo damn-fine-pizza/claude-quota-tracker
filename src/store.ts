@@ -26,6 +26,10 @@ export class Store {
   constructor(path: string) {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL");
+    // SQLite leaves foreign-key enforcement disabled per connection unless it
+    // is explicitly enabled. The task/run relationship is a data-integrity
+    // boundary, not merely documentation in the CREATE TABLE statement.
+    this.db.exec("PRAGMA foreign_keys = ON");
     // Three writers share this DB (poller, executor, enqueue). WAL only gives
     // reader-writer concurrency; without a busy timeout a writer collision
     // throws SQLITE_BUSY immediately.
@@ -118,6 +122,39 @@ export class Store {
         updated_ts     INTEGER NOT NULL
       );
     `);
+    this.migrate();
+  }
+
+  /** Versioned, idempotent migrations for databases created by prior releases. */
+  private migrate(): void {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY, applied_ts INTEGER NOT NULL
+    )`);
+    const v1 = this.db.prepare("SELECT 1 FROM schema_migrations WHERE version = 1").get();
+    if (v1) return;
+    const columns: Array<[string, string]> = [
+      ["provider_id", "TEXT NOT NULL DEFAULT 'claude'"],
+      ["profile_id", "TEXT NOT NULL DEFAULT 'claude-default'"],
+      ["backend_id", "TEXT NOT NULL DEFAULT 'claude-cli'"],
+      ["permission_class", "TEXT"],
+      ["run_cwd", "TEXT"],
+      ["worktree_path", "TEXT"],
+      ["receipt_id", "INTEGER"],
+      ["config_snapshot", "TEXT"],
+      ["budget_snapshot", "TEXT"],
+    ];
+    const existing = new Set((this.db.prepare("PRAGMA table_info(task_runs)").all() as Array<{ name: string }>).map((c) => c.name));
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const [name, definition] of columns) {
+        if (!existing.has(name)) this.db.exec(`ALTER TABLE task_runs ADD COLUMN ${name} ${definition}`);
+      }
+      this.db.prepare("INSERT INTO schema_migrations (version, applied_ts) VALUES (1, ?)").run(Date.now());
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   appendSnapshot(ts: number, provider: string, readings: WindowReading[]): void {
@@ -170,6 +207,12 @@ export class Store {
       ts: r.ts,
       provider: r.provider,
       windowKey: r.window_key as WindowKey,
+      name: r.window_key,
+      unit: "percent",
+      value: r.pct,
+      source: "snapshot-store",
+      reliability: "observed",
+      durationMs: null,
       pct: r.pct,
       resetEpochMs: r.reset,
       raw: r.raw,
@@ -371,16 +414,32 @@ export class Store {
     sizeAtRun: TaskSize;
     sessionPctBefore: number | null;
     weeklyPctBefore: number | null;
+    providerId?: string;
+    profileId?: string;
+    backendId?: string;
+    permissionClass?: Task["permissionClass"];
+    runCwd?: string;
+    worktreePath?: string | null;
+    receiptId?: number | null;
+    configSnapshot?: unknown;
+    budgetSnapshot?: unknown;
   }): number {
     const row = this.db
       .prepare(
         `INSERT INTO task_runs
-         (task_id, started_ts, pid, size_at_run, session_pct_before, weekly_pct_before)
-         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+         (task_id, started_ts, pid, size_at_run, session_pct_before, weekly_pct_before,
+          provider_id, profile_id, backend_id, permission_class, run_cwd, worktree_path,
+          receipt_id, config_snapshot, budget_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
       .get(
         args.taskId, args.ts, args.pid, args.sizeAtRun,
         args.sessionPctBefore, args.weeklyPctBefore,
+        args.providerId ?? "claude", args.profileId ?? "claude-default", args.backendId ?? "claude-cli",
+        args.permissionClass ?? null, args.runCwd ?? null, args.worktreePath ?? null,
+        args.receiptId ?? null,
+        args.configSnapshot === undefined ? null : JSON.stringify(args.configSnapshot),
+        args.budgetSnapshot === undefined ? null : JSON.stringify(args.budgetSnapshot),
       ) as { id: number };
     return row.id;
   }
@@ -400,6 +459,12 @@ export class Store {
         actuals.totalCostUsd, actuals.durationMs, actuals.result, actuals.error,
         actuals.rawJson, runId,
       );
+  }
+
+  /** Persist the actual isolated location once worktree preparation succeeds. */
+  setRunLocation(runId: number, cwd: string, worktreePath: string | null): void {
+    this.db.prepare("UPDATE task_runs SET run_cwd = ?, worktree_path = ? WHERE id = ?")
+      .run(cwd, worktreePath, runId);
   }
 
   /** Terminal/retry transition after a run. */
@@ -440,6 +505,33 @@ export class Store {
     return row
       ? { id: row.id, pid: row.pid, startedTs: row.started_ts, endedTs: row.ended_ts }
       : null;
+  }
+
+  /** Provider-neutral audit projection for a task's concrete execution attempts. */
+  runAuditRecords(taskId: number): Array<{
+    id: number; providerId: string; profileId: string; backendId: string;
+    permissionClass: Task["permissionClass"] | null; runCwd: string | null;
+    worktreePath: string | null; receiptId: number | null;
+    configSnapshot: unknown; budgetSnapshot: unknown;
+  }> {
+    const rows = this.db.prepare(
+      `SELECT id, provider_id, profile_id, backend_id, permission_class, run_cwd,
+              worktree_path, receipt_id, config_snapshot, budget_snapshot
+       FROM task_runs WHERE task_id = ? ORDER BY started_ts ASC`,
+    ).all(taskId) as Array<Record<string, unknown>>;
+    const parse = (value: unknown) => {
+      if (typeof value !== "string") return null;
+      try { return JSON.parse(value); } catch { return null; }
+    };
+    return rows.map((row) => ({
+      id: row.id as number, providerId: row.provider_id as string,
+      profileId: row.profile_id as string, backendId: row.backend_id as string,
+      permissionClass: (row.permission_class as Task["permissionClass"] | null) ?? null,
+      runCwd: (row.run_cwd as string | null) ?? null,
+      worktreePath: (row.worktree_path as string | null) ?? null,
+      receiptId: (row.receipt_id as number | null) ?? null,
+      configSnapshot: parse(row.config_snapshot), budgetSnapshot: parse(row.budget_snapshot),
+    }));
   }
 
   /** estimate vs actual joined view — the DoD "queryable" requirement. */

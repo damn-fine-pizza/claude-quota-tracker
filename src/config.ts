@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isSea } from "./sea.js";
 import type { TaskSize } from "./types.js";
+import type { RoutingPolicy } from "./routing-policy.js";
 
 export interface QuietHours {
   /** "HH:MM" local time. Range may cross midnight (e.g. 23:00-08:00). */
@@ -38,6 +39,8 @@ export interface ExecutorConfig {
   sessionGuardPct: number;
   /** Weekly window is the fill target — guard leniently, near-exhaustion only. */
   weeklyGuardPct: number;
+  /** Do not start new tasks this close to either observed quota reset. */
+  resetSafetyMinutes: number;
   /** Tasks exceeding this many attempts go to terminal `failed` instead of carrying over. */
   maxAttempts: number;
   /** Per-size execFile timeout in minutes. */
@@ -108,6 +111,7 @@ export interface Config {
   mcp: McpConfig;
   update: UpdateConfig;
   plan: PlanConfig;
+  routing: RoutingPolicy;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -131,6 +135,7 @@ export const DEFAULT_CONFIG: Config = {
     enabled: true,
     sessionGuardPct: 80,
     weeklyGuardPct: 95,
+    resetSafetyMinutes: 10,
     maxAttempts: 3,
     taskTimeoutMinutes: { xs: 5, s: 10, m: 20, l: 40, xl: 60 },
     lowUsageMinDays: 3,
@@ -152,6 +157,7 @@ export const DEFAULT_CONFIG: Config = {
     channel: "stable",
   },
   plan: { name: null },
+  routing: { rules: [], reserveEnabled: false, reservedProfile: null },
 };
 
 /**
@@ -211,6 +217,7 @@ export function loadConfig(path: string = CONFIG_PATH): Config {
     },
     update: { ...DEFAULT_CONFIG.update, ...(raw.update ?? {}) },
     plan: { ...DEFAULT_CONFIG.plan, ...(raw.plan ?? {}) },
+    routing: { ...DEFAULT_CONFIG.routing, ...(raw.routing ?? {}) },
   };
 }
 

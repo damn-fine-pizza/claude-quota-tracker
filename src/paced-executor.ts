@@ -10,8 +10,13 @@ import { readQuotaSnapshot } from "./quota-state.js";
 import { SchedulerMetaStore } from "./scheduler-meta.js";
 import { admitTask, compareScheduledTasks, continuousEligible } from "./scheduler-policy.js";
 import { Store } from "./store.js";
+import { planQueue } from "./queue-planner.js";
+import { preflightTask } from "./preflight.js";
+import { loadOverride } from "./override.js";
+import { resolveBackend } from "./dispatch.js";
+import { createDefaultProviderRegistry } from "./providers/index.js";
 import {
-  currentTimezone, inNightWindow, isLatestFresh, msUntilWindowEnd,
+  bestNightStartMs, currentTimezone, inNightWindow, isLatestFresh, msUntilWindowEnd,
   nightWindowConfirmed, windowGuard,
 } from "./tasks.js";
 import { SIZE_ESTIMATES, type Task } from "./types.js";
@@ -60,6 +65,7 @@ export async function runPacedOnce(): Promise<boolean> {
 
     const pacing = quotaPacingVerdict({
       enabled: pacingCfg.enabled,
+      mode: pacingCfg.mode,
       nowMs,
       sessionPct: latest.guard.sessionPct,
       sessionResetMs: latest.guard.sessionResetMs,
@@ -77,6 +83,7 @@ export async function runPacedOnce(): Promise<boolean> {
     const insideNight = inNightWindow(nowMs, config.nightWindow);
     const nightConfirmed = nightWindowConfirmed(config.nightWindow, currentTimezone());
     const records = store.estimationRecords();
+    const registry = createDefaultProviderRegistry();
 
     const candidates = store.listTasks(["queued", "carried_over"])
       .filter((task) => task.unattendedOk)
@@ -85,12 +92,40 @@ export async function runPacedOnce(): Promise<boolean> {
         if (meta.paused || meta.intent === "interactive") return false;
         if (pacingCfg.continuousEnabled && continuousEligible(task, meta)) return true;
         if (!insideNight || !nightConfirmed.ok) return false;
+        if (task.scheduledWindow === "night") {
+          const best = bestNightStartMs({
+            nowMs,
+            nightWindow: config.nightWindow,
+            history: store.history("claude", "session_5h", nowMs - 14 * 24 * 60 * 60 * 1000),
+            minDays: config.executor.lowUsageMinDays,
+            floorHHMM: config.executor.nightFloorHHMM,
+          });
+          if (nowMs < best.startMs) return false;
+        }
         const timeout = config.executor.taskTimeoutMinutes[task.size] ?? 60;
         return taskFitsNight(task, nowMs, config.nightWindow.end, timeout);
       })
       .sort(compareScheduledTasks);
 
-    for (const { task, meta } of candidates) {
+    const candidateMeta = new Map(candidates.map(({ task, meta }) => [task.id, meta]));
+    const override = loadOverride();
+    const plannerMode = candidates[0]?.meta.queueMode ?? "priority";
+    const planned = planQueue({
+      tasks: candidates.map(({ task }) => task), meta: candidateMeta, mode: plannerMode, nowMs,
+      cutoffMs: null, estimates: new Map(candidates.map(({ task, meta }) => [task.id, meta.estimatedTokens ?? 0])),
+      routing: config.routing, reserveProfile: override.enabled ? override.reserveProfile : null,
+      dispatchReason: (task, meta, providerId, profileId) => {
+        const result = resolveBackend(registry, task, { ...meta, providerId, profileId }, "automatic");
+        return result.ok ? null : result.reasonCode;
+      },
+    });
+    const orderedCandidates = planned.filter((decision) => decision.ok)
+      .map((decision) => candidates.find(({ task }) => task.id === decision.taskId)!)
+      .filter(Boolean);
+
+    for (const { task, meta } of orderedCandidates) {
+      const preflight = preflightTask(task);
+      if (!preflight.ok) { console.log(`[paced-executor] hold task #${task.id}: ${preflight.reasons.join(",")}`); continue; }
       const estimate = estimateTaskTokens({
         size: task.size,
         overrideTokens: meta.estimatedTokens,
@@ -114,11 +149,26 @@ export async function runPacedOnce(): Promise<boolean> {
 
       const claimed = store.claimTaskById(nowMs, task.id);
       if (!claimed) continue;
+      const receiptId = metaStore.recordReceipt({ ts: nowMs, taskId: task.id, providerId: meta.providerId, profileId: meta.profileId,
+        estimateTokens: estimate.tokens, policy: plannerMode, reasonCode: admission.reason, budgetSnapshot: latest });
       console.log(
         `[paced-executor] task #${task.id} ${meta.intent}; ${admission.reason}; ` +
         `estimate=${Math.round(estimate.tokens / 1000)}K (${estimate.source})`,
       );
-      return await executeTask(store, claimed, config, latest.guard);
+      const backend = resolveBackend(registry, claimed, meta, "automatic");
+      if (!backend.ok) {
+        // This should be impossible after the planner check, but never claim
+        // work based on an assumption that a backend is still available.
+        store.settleTask({ ts: Date.now(), taskId: claimed.id, status: "carried_over", lastError: backend.reasonCode });
+        continue;
+      }
+      return await executeTask(store, claimed, config, latest.guard, {
+        backend: backend.backend,
+        runContext: {
+          providerId: backend.providerId, profileId: backend.profileId, backendId: backend.backend.id,
+          receiptId, budgetSnapshot: latest,
+        },
+      });
     }
 
     if (candidates.length === 0) {

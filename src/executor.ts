@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -8,13 +8,17 @@ import {
 import { acquireLock, isPidAlive, releaseLock } from "./lockfile.js";
 import { sendMacNotification } from "./notify.js";
 import { createDefaultProviderRegistry, type ExecutionBackend } from "./providers/index.js";
+import { resolveBackend } from "./dispatch.js";
+import { SchedulerMetaStore } from "./scheduler-meta.js";
+import {
+  CLAUDE_DEFAULT_PROFILE_ID, CLAUDE_PROVIDER_ID, profileCache, readLatestCache,
+} from "./latest-cache.js";
 import { addWorktree, type ExecFn } from "./runner.js";
 import { Store } from "./store.js";
 import {
-  bestNightStartMs, currentTimezone, isLatestFresh, msUntilWindowEnd,
-  shouldRunExecutor, windowGuard, type GuardInput,
+  isLatestFresh, windowGuard, type GuardInput,
 } from "./tasks.js";
-import type { Task, TaskSize } from "./types.js";
+import type { Task } from "./types.js";
 
 /**
  * Freshly claimed tasks are skipped by stale recovery for this long: there is
@@ -32,6 +36,13 @@ const LOCK_PATH = join(DATA_DIR, "scheduler.lock");
 export interface ExecutionDeps {
   backend?: ExecutionBackend;
   commandExec?: ExecFn;
+  runContext?: {
+    providerId: string;
+    profileId: string;
+    backendId: string;
+    receiptId?: number | null;
+    budgetSnapshot?: unknown;
+  };
 }
 
 interface LatestSnapshot {
@@ -43,20 +54,16 @@ function readLatest(nowMs: number): LatestSnapshot {
   const empty: GuardInput = {
     nowMs, sessionPct: null, sessionResetMs: null, weeklyPct: null, weeklyResetMs: null,
   };
-  if (!existsSync(LATEST_JSON_PATH)) return { generatedAtMs: null, guard: empty };
+  const latest = readLatestCache(LATEST_JSON_PATH);
+  if (!latest) return { generatedAtMs: null, guard: empty };
   try {
-    const j = JSON.parse(readFileSync(LATEST_JSON_PATH, "utf8")) as {
-      generatedAtMs: number;
-      providers: Record<string, { windows: Array<{
-        windowKey: string; pct: number | null; resetEpochMs: number | null;
-      }> }>;
-    };
-    const windows = j.providers["claude"]?.windows ?? [];
+    const profile = profileCache(latest, CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+    const windows = profile?.windows ?? [];
     const find = (key: string) => windows.find((w) => w.windowKey === key);
     const session = find("session_5h");
     const weekly = find("weekly_all");
     return {
-      generatedAtMs: j.generatedAtMs,
+      generatedAtMs: profile?.generatedAtMs ?? null,
       guard: {
         nowMs,
         sessionPct: session?.pct ?? null,
@@ -110,14 +117,28 @@ export async function executeTask(
   deps: ExecutionDeps = {},
 ): Promise<boolean> {
   const nowMs = Date.now();
-  // The run row goes in before any slow work so stale recovery can see a live pid.
+  const timeoutMs = (config.executor.taskTimeoutMinutes[task.size] ?? 60) * 60 * 1000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    settleUnfinished(store, Date.now(), task, config.executor, `invalid timeout for size ${task.size}`);
+    return false;
+  }
+
+  const backend = deps.backend ?? createDefaultProviderRegistry()
+    .executionBackendFor(CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+  if (!backend) {
+    settleUnfinished(store, Date.now(), task, config.executor, "execution backend unavailable for claude/claude-default");
+    return false;
+  }
+  // The run row goes in before slow worktree/backend work so recovery can see it.
+  const context = deps.runContext ?? {
+    providerId: backend.providerId, profileId: backend.profileId, backendId: backend.id,
+  };
   const runId = store.startRun({
-    ts: nowMs,
-    taskId: task.id,
-    pid: process.pid,
-    sizeAtRun: task.size,
-    sessionPctBefore: guard.sessionPct,
-    weeklyPctBefore: guard.weeklyPct,
+    ts: nowMs, taskId: task.id, pid: process.pid, sizeAtRun: task.size,
+    sessionPctBefore: guard.sessionPct, weeklyPctBefore: guard.weeklyPct,
+    providerId: context.providerId, profileId: context.profileId, backendId: context.backendId,
+    permissionClass: task.permissionClass, runCwd: task.cwd, worktreePath: null,
+    receiptId: context.receiptId ?? null, configSnapshot: config, budgetSnapshot: context.budgetSnapshot,
   });
 
   const failRun = (error: string): false => {
@@ -138,18 +159,11 @@ export async function executeTask(
     try {
       await addWorktree(task.cwd, worktreePath, deps.commandExec);
       cwd = worktreePath;
+      store.setRunLocation(runId, cwd, worktreePath);
     } catch (e) {
       return failRun(`worktree setup failed: ${(e as Error).message}`);
     }
   }
-
-  const timeoutMs = (config.executor.taskTimeoutMinutes[task.size] ?? 60) * 60 * 1000;
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return failRun(`invalid timeout for size ${task.size}`);
-  }
-
-  const backend = deps.backend ?? createDefaultProviderRegistry()
-    .requireExecutionBackend("claude-cli");
   const { actuals, success } = await backend.execute({ task, cwd, timeoutMs });
   store.finishRun(runId, Date.now(), actuals);
   store.settleTask({
@@ -167,74 +181,16 @@ export async function executeTask(
 
 /** Night loop: re-evaluate gates before every claim, drain until blocked. */
 export async function runNightLoop(deps: ExecutionDeps = {}): Promise<void> {
-  const config = loadConfig();
-  if (!acquireLock(LOCK_PATH)) {
-    console.log("[executor] another executor holds the lock; exiting");
-    return;
-  }
-  const store = new Store(DB_PATH);
-  try {
-    recoverStaleRunning(store, Date.now(), config.executor);
-    for (;;) {
-      const nowMs = Date.now();
-      const latest = readLatest(nowMs);
-      const verdict = shouldRunExecutor({
-        nowMs,
-        config,
-        currentTz: currentTimezone(),
-        latestGeneratedAtMs: latest.generatedAtMs,
-        guard: latest.guard,
-        hasClaimableTask: store.hasClaimableTask(),
-        hasLiveRunningTask: store.listTasks(["running"]).length > 0,
-      });
-      if (!verdict.ok) {
-        console.log(`[executor] stop: ${verdict.reason}`);
-        return;
-      }
-      // Window fit: only consider tasks whose timeout fits the time left before
-      // the window ends. A too-big head task must not block smaller ones behind
-      // it — restrict the claim to fitting sizes rather than stopping.
-      const remMs = msUntilWindowEnd(nowMs, config.nightWindow);
-      const fitSizes = (Object.keys(config.executor.taskTimeoutMinutes) as TaskSize[])
-        .filter((s) => config.executor.taskTimeoutMinutes[s] * 60 * 1000 <= remMs);
-      const next = store.peekNextTask(fitSizes);
-      if (!next) {
-        console.log("[executor] stop: no claimable task fits the remaining window");
-        return;
-      }
-      // Deferrable night tasks hold until the night's lowest-usage hour.
-      if (next.scheduledWindow === "night") {
-        const best = bestNightStartMs({
-          nowMs,
-          nightWindow: config.nightWindow,
-          history: store.history("claude", "session_5h", nowMs - 14 * 24 * 60 * 60 * 1000),
-          minDays: config.executor.lowUsageMinDays,
-          floorHHMM: config.executor.nightFloorHHMM,
-        });
-        if (nowMs < best.startMs) {
-          const mins = Math.round((best.startMs - nowMs) / 60000);
-          console.log(
-            `[executor] stop: holding for low-usage hour ${best.hour}:00 ` +
-            `(${best.reason}, ~${mins}m)`,
-          );
-          return;
-        }
-      }
-      const task = store.claimNextTask(nowMs, fitSizes);
-      if (!task) return;
-      console.log(`[executor] task #${task.id} (${task.size}, ${task.permissionClass})`);
-      const ok = await executeTask(store, task, config, latest.guard, deps);
-      console.log(`[executor] task #${task.id} ${ok ? "done" : "not done (carried over/failed)"}`);
-    }
-  } finally {
-    store.close();
-    releaseLock(LOCK_PATH);
-  }
+  // Keep the public entrypoint, but do not maintain a second admission path.
+  // Dynamic import avoids the executor <-> paced-executor implementation cycle.
+  if (deps.backend || deps.commandExec) throw new Error("runNightLoop test dependencies are no longer supported; use executeTask");
+  const { runPacedOnce } = await import("./paced-executor.js");
+  await runPacedOnce();
 }
 
 export interface ManualRunResult {
   ok: boolean;
-  reason?: "locked" | "guard" | "not_found";
+  reason?: "locked" | "guard" | "not_found" | "backend_unavailable" | "permission_unsupported" | "budget_unavailable";
 }
 
 /**
@@ -250,16 +206,31 @@ export async function runManualTask(id: number, deps: ExecutionDeps = {}): Promi
   }
   const config = loadConfig();
   const store = new Store(DB_PATH);
+  const metaStore = new SchedulerMetaStore(DB_PATH);
   try {
     const nowMs = Date.now();
+    const queued = store.getTask(id);
+    if (!queued || !["queued", "carried_over", "failed"].includes(queued.status)) {
+      console.error(`[executor] task #${id} not found or not runnable`);
+      return { ok: false, reason: "not_found" };
+    }
+    const scheduling = metaStore.getOrDefault(id);
+    const resolved = deps.backend
+      ? { ok: true as const, backend: deps.backend }
+      : resolveBackend(createDefaultProviderRegistry(), queued, scheduling, "manual");
+    if (!resolved.ok) {
+      console.error(`[executor] task #${id} not run: ${resolved.reasonCode}`);
+      return { ok: false, reason: resolved.reasonCode };
+    }
     const latest = readLatest(nowMs);
-    if (
+    if (resolved.backend.providerId === CLAUDE_PROVIDER_ID && (
       latest.generatedAtMs === null ||
       !isLatestFresh(latest.generatedAtMs, nowMs, config.pollIntervalSeconds)
-    ) {
+    )) {
       console.warn("[executor] warning: latest.json stale — guard uses old usage data");
     }
-    const guardVerdict = windowGuard(latest.guard, config.executor);
+    const guardVerdict = resolved.backend.providerId === CLAUDE_PROVIDER_ID
+      ? windowGuard(latest.guard, config.executor) : { ok: true as const };
     if (!guardVerdict.ok) {
       console.error(`[executor] window guard: ${guardVerdict.reason}`);
       return { ok: false, reason: "guard" };
@@ -269,9 +240,17 @@ export async function runManualTask(id: number, deps: ExecutionDeps = {}): Promi
       console.error(`[executor] task #${id} not found or not runnable`);
       return { ok: false, reason: "not_found" };
     }
-    const ok = await executeTask(store, task, config, latest.guard, deps);
+    const ok = await executeTask(store, task, config, latest.guard, {
+      ...deps, backend: resolved.backend,
+      runContext: {
+        providerId: scheduling.providerId, profileId: scheduling.profileId,
+        backendId: resolved.backend.id, receiptId: deps.runContext?.receiptId ?? null,
+        budgetSnapshot: deps.runContext?.budgetSnapshot ?? (resolved.backend.providerId === CLAUDE_PROVIDER_ID ? latest : null),
+      },
+    });
     return { ok };
   } finally {
+    metaStore.close();
     store.close();
     releaseLock(LOCK_PATH);
   }

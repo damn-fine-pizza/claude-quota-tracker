@@ -16,6 +16,10 @@ describe("parseUsageOutput", () => {
     expect(readings).toHaveLength(3);
     const byKey = Object.fromEntries(readings.map((r) => [r.windowKey, r]));
     expect(byKey.session_5h.pct).toBe(12);
+    expect(byKey.session_5h).toMatchObject({
+      name: "Session (5h)", unit: "percent", value: 12,
+      source: "claude-cli-usage", reliability: "observed", durationMs: 5 * 60 * 60 * 1000,
+    });
     expect(byKey.weekly_all.pct).toBe(16);
     expect(byKey.weekly_sonnet.pct).toBe(11);
     // Jun 11 22:49 KST = 13:49 UTC

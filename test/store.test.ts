@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Store } from "../src/store.js";
 import type { TaskInput, WindowReading } from "../src/types.js";
 
@@ -60,6 +64,33 @@ describe("Store (in-memory)", () => {
     expect(store.listTasks()).toEqual([]);
     expect(store.hasClaimableTask()).toBe(false);
     store.close();
+  });
+
+  it("upgrades a pre-v1 task_runs schema without losing its existing rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "llm-squeeze-migration-"));
+    const path = join(dir, "quota.db");
+    try {
+      const fresh = new Store(path);
+      const task = fresh.enqueueTask(10, taskInput({ prompt: "legacy" }));
+      fresh.claimTaskById(11, task.id);
+      fresh.startRun({ ts: 12, taskId: task.id, pid: null, sizeAtRun: "xs", sessionPctBefore: 1, weeklyPctBefore: 2 });
+      fresh.close();
+
+      const legacy = new DatabaseSync(path);
+      for (const column of ["provider_id", "profile_id", "backend_id", "permission_class", "run_cwd", "worktree_path", "receipt_id", "config_snapshot", "budget_snapshot"]) {
+        legacy.exec(`ALTER TABLE task_runs DROP COLUMN ${column}`);
+      }
+      legacy.exec("DELETE FROM schema_migrations WHERE version = 1");
+      legacy.close();
+
+      const upgraded = new Store(path);
+      expect(upgraded.runAuditRecords(task.id)).toEqual([expect.objectContaining({
+        providerId: "claude", profileId: "claude-default", backendId: "claude-cli",
+      })]);
+      upgraded.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("latest() returns only the most recent snapshot's readings", () => {

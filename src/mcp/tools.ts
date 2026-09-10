@@ -7,8 +7,14 @@ import { loadPacingConfig, mergePacingPatch } from "../pacing-config.js";
 import { quotaPacingVerdict } from "../pacing.js";
 import { readQuotaSnapshot } from "../quota-state.js";
 import { SchedulerMetaStore } from "../scheduler-meta.js";
+import { planQueue } from "../queue-planner.js";
 import { Store } from "../store.js";
 import { TRIAGE, windowGuard } from "../tasks.js";
+import { TimerStore } from "../timers.js";
+import { loadOverride, setOverride } from "../override.js";
+import { validateRoutingPolicy } from "../routing-policy.js";
+import { createDefaultProviderRegistry } from "../providers/index.js";
+import { resolveBackend } from "../dispatch.js";
 
 function text(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -44,6 +50,10 @@ export function registerTools(server: McpServer): void {
         permission: z.enum(["read-only", "write-scoped", "destructive"]).default("read-only"),
         continuous: z.boolean().default(false)
           .describe("Explicitly opt this task into unattended execution outside the confirmed night window."),
+        title_markdown: z.string().optional(), provider: z.string().default("claude"),
+        profile: z.string().default("claude-default"), model: z.string().nullable().optional(),
+        category: z.string().nullable().optional(), manual_order: z.number().int().optional(),
+        queue_mode: z.enum(["manual", "priority"]).default("priority"),
       },
     },
     async (args) => {
@@ -69,6 +79,9 @@ export function registerTools(server: McpServer): void {
           intent: args.intent, deadlineMs: deadline,
           estimatedTokens: args.estimated_tokens ?? null,
           paused: false, continuousOk: continuous,
+          titleMarkdown: args.title_markdown ?? null, providerId: args.provider, profileId: args.profile,
+          model: args.model ?? null, category: args.category ?? null, manualOrder: args.manual_order ?? task.id,
+          queueMode: args.queue_mode,
         });
         return text({
           task, scheduling: m,
@@ -103,6 +116,7 @@ export function registerTools(server: McpServer): void {
       const snapshot = readQuotaSnapshot(nowMs);
       const pacing = quotaPacingVerdict({
         enabled: pacingCfg.enabled, nowMs,
+        mode: pacingCfg.mode,
         sessionPct: snapshot.guard.sessionPct, sessionResetMs: snapshot.guard.sessionResetMs,
         weeklyPct: snapshot.guard.weeklyPct, weeklyResetMs: snapshot.guard.weeklyResetMs,
         sessionBudgetPct: config.executor.sessionGuardPct,
@@ -123,6 +137,7 @@ export function registerTools(server: McpServer): void {
       description: "Update quota pacing settings (docs/MCP_SCHEDULER.md). Only the provided fields are changed; omitted fields keep their current value.",
       inputSchema: {
         enabled: z.boolean().optional(),
+        mode: z.enum(["protect", "balanced", "flush"]).optional(),
         slackPct: z.number().min(0).optional(),
         sessionWindowHours: z.number().min(0.1).optional(),
         weeklyWindowHours: z.number().min(0.1).optional(),
@@ -153,6 +168,27 @@ export function registerTools(server: McpServer): void {
       }
     },
   );
+
+  server.registerTool(
+    "list_planner_receipts",
+    {
+      description: "Return recent deterministic planner decisions and their budget snapshots for audit/debugging.",
+      inputSchema: { limit: z.number().int().min(1).max(1000).default(100) },
+    },
+    async ({ limit }) => {
+      const meta = new SchedulerMetaStore(DB_PATH);
+      try { return text(meta.listReceipts(limit)); } finally { meta.close(); }
+    },
+  );
+
+  server.registerTool("list_timers", { description: "List persistent timestamp and cron timers.", inputSchema: {} }, async () => { const t=new TimerStore(); try{return text(t.list());}finally{t.close();} });
+  server.registerTool("create_timer", { description: "Create a persistent timestamp or cron timer.", inputSchema: { kind:z.enum(["timestamp","cron"]), expression:z.string().min(1), task_id:z.number().nullable().optional() } }, async (a) => { const t=new TimerStore(); try{return text(t.add(a.kind,a.expression,a.task_id??null));}finally{t.close();} });
+  server.registerTool("update_timer", { description: "Update or pause a timer.", inputSchema: { timer_id:z.number(), expression:z.string().optional(), paused:z.boolean().optional() } }, async (a) => { const t=new TimerStore(); try { const x=t.update(a.timer_id,{expression:a.expression,paused:a.paused}); if(!x)throw new Error("timer not found"); return text(x); } finally {t.close();} });
+  server.registerTool("cancel_timer", { description: "Cancel a persistent timer.", inputSchema: { timer_id:z.number() } }, async (a) => { const t=new TimerStore(); try{return text({cancelled:t.cancel(a.timer_id)});}finally{t.close();} });
+  server.registerTool("get_scheduler_status", { description: "Return queue, override, routing and pacing state.", inputSchema:{} }, async()=>text({override:loadOverride(),routing:loadConfig().routing,pacing:loadPacingConfig()}));
+  server.registerTool("set_manual_override", { description: "Explicitly reserve/preempt a profile; yolo is rejected.", inputSchema:{enabled:z.boolean(),reserve_profile:z.string().nullable().optional(),preempt:z.boolean().optional()} }, async(a)=>text(setOverride({enabled:a.enabled,reserveProfile:a.reserve_profile??null,preempt:a.preempt??a.enabled})));
+  server.registerTool("get_routing_policy", { description:"Return category/provider profile routing policy.", inputSchema:{} }, async()=>text(loadConfig().routing));
+  server.registerTool("set_routing_policy", { description:"Set ordered category profile matrices; fallback must be explicit and yolo is forbidden.", inputSchema:{rules:z.array(z.object({category:z.string().min(1),profiles:z.array(z.string().min(1)).min(1),fallbackEnabled:z.boolean()})),reserveEnabled:z.boolean().optional(),reservedProfile:z.string().nullable().optional()} }, async(a)=>{const p=validateRoutingPolicy({rules:a.rules,reserveEnabled:a.reserveEnabled??false,reservedProfile:a.reservedProfile??null}); saveConfigPatch({routing:p});return text(p);});
 
   server.registerTool(
     "pause_task",
@@ -195,12 +231,15 @@ export function registerTools(server: McpServer): void {
         deadline: z.union([z.string(), z.number(), z.null()]).optional(),
         continuous: z.boolean().optional()
           .describe("Explicitly opt this task into unattended execution outside the confirmed night window."),
+        title_markdown: z.string().nullable().optional(), provider: z.string().optional(), profile: z.string().optional(),
+        model: z.string().nullable().optional(), category: z.string().nullable().optional(), manual_order: z.number().int().optional(),
+        queue_mode: z.enum(["manual", "priority"]).optional(),
       },
     },
-    async ({ task_id, prompt, cwd, size, permission, priority, intent, deadline, continuous }) => withTask(task_id, (store, meta) => {
+    async ({ task_id, prompt, cwd, size, permission, priority, intent, deadline, continuous, title_markdown, provider, profile, model, category, manual_order, queue_mode }) => withTask(task_id, (store, meta) => {
       if (
         prompt === undefined && cwd === undefined && size === undefined && permission === undefined &&
-        priority === undefined && intent === undefined && deadline === undefined && continuous === undefined
+        priority === undefined && intent === undefined && deadline === undefined && continuous === undefined && title_markdown === undefined && provider === undefined && profile === undefined && model === undefined && category === undefined && manual_order === undefined && queue_mode === undefined
       ) {
         throw new Error("provide at least one of prompt, cwd, size, permission, priority, intent, deadline, continuous");
       }
@@ -224,7 +263,7 @@ export function registerTools(server: McpServer): void {
       // Also re-run this when only `permission` changed: it may have flipped
       // unattendedOk (e.g. to destructive), which must zero out continuousOk
       // even though continuous/intent/deadline themselves weren't touched.
-      if (intent !== undefined || deadline !== undefined || continuous !== undefined || permission !== undefined) {
+      if (intent !== undefined || deadline !== undefined || continuous !== undefined || permission !== undefined || title_markdown !== undefined || provider !== undefined || profile !== undefined || model !== undefined || category !== undefined || manual_order !== undefined || queue_mode !== undefined) {
         const nextIntent = intent ?? scheduling.intent;
         const nextDeadline = deadline === undefined ? scheduling.deadlineMs : deadlineMs(deadline);
         if (nextIntent === "deadline" && nextDeadline == null) throw new Error("deadline intent requires deadline");
@@ -235,10 +274,59 @@ export function registerTools(server: McpServer): void {
           intent: nextIntent, deadlineMs: nextDeadline,
           estimatedTokens: scheduling.estimatedTokens,
           paused: scheduling.paused, continuousOk: nextContinuous,
+          titleMarkdown: title_markdown === undefined ? scheduling.titleMarkdown : title_markdown,
+          providerId: provider ?? scheduling.providerId, profileId: profile ?? scheduling.profileId,
+          model: model === undefined ? scheduling.model : model, category: category === undefined ? scheduling.category : category,
+          manualOrder: manual_order ?? scheduling.manualOrder, queueMode: queue_mode ?? scheduling.queueMode,
         });
       }
       return text({ task, scheduling });
     }),
+  );
+
+  server.registerTool(
+    "preview_queue",
+    { description: "Pure deterministic preview of the next queue decisions.", inputSchema: { mode: z.enum(["manual", "priority"]).default("priority") } },
+    async ({ mode }) => {
+      const store = new Store(DB_PATH); const meta = new SchedulerMetaStore(DB_PATH);
+      try {
+        const tasks = store.listTasks(["queued", "carried_over"]); const metas = new Map(tasks.map((t) => [t.id, meta.getOrDefault(t.id)]));
+        const estimates = new Map(tasks.map((t) => [t.id, metas.get(t.id)!.estimatedTokens ?? 0]));
+        const registry = createDefaultProviderRegistry();
+        return text({ mode, decisions: planQueue({ tasks, meta: metas, mode, nowMs: Date.now(), cutoffMs: null, estimates,
+          dispatchReason: (task, scheduling, providerId, profileId) => {
+            const verdict = resolveBackend(registry, task, { ...scheduling, providerId, profileId }, "automatic");
+            return verdict.ok ? null : verdict.reasonCode;
+          },
+        }) });
+      } finally { meta.close(); store.close(); }
+    },
+  );
+
+  server.registerTool(
+    "run_queue",
+    { description: "Run the first task admitted by the same deterministic planner used for preview, recording a receipt.", inputSchema: { mode: z.enum(["manual", "priority"]).default("priority") } },
+    async ({ mode }) => {
+      const store = new Store(DB_PATH); const meta = new SchedulerMetaStore(DB_PATH);
+      try {
+        const nowMs = Date.now(); const tasks = store.listTasks(["queued", "carried_over"]);
+        const metas = new Map(tasks.map((t) => [t.id, meta.getOrDefault(t.id)]));
+        const estimates = new Map(tasks.map((t) => [t.id, metas.get(t.id)!.estimatedTokens ?? 0]));
+        const registry = createDefaultProviderRegistry();
+        const decisions = planQueue({ tasks, meta: metas, mode, nowMs, cutoffMs: null, estimates,
+          dispatchReason: (task, scheduling, providerId, profileId) => {
+            const verdict = resolveBackend(registry, task, { ...scheduling, providerId, profileId }, "automatic");
+            return verdict.ok ? null : verdict.reasonCode;
+          },
+        });
+        const selected = decisions.find((d) => d.ok);
+        if (!selected) return text({ mode, decisions, run: null });
+        const budgetSnapshot = readQuotaSnapshot(nowMs);
+        const receiptId = meta.recordReceipt({ ts: nowMs, taskId: selected.taskId, providerId: selected.providerId, profileId: selected.profileId, estimateTokens: selected.estimateTokens, policy: mode, reasonCode: selected.reasonCode, budgetSnapshot });
+        const result = await runManualTask(selected.taskId, { runContext: { providerId: selected.providerId, profileId: selected.profileId, backendId: "selected-by-dispatch", receiptId, budgetSnapshot } });
+        return text({ mode, decisions, run: { taskId: selected.taskId, ...result } });
+      } finally { meta.close(); store.close(); }
+    },
   );
 
   server.registerTool(

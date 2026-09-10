@@ -23,15 +23,20 @@ describe("readQuotaSnapshot", () => {
   it("passes through the poller's already-computed forecast per window", () => {
     writeFileSync(path, JSON.stringify({
       generatedAtMs: 5000,
-      providers: {
-        claude: {
+      profiles: {
+        "claude-default": {
+          providerId: "claude", profileId: "claude-default", status: "healthy", generatedAtMs: 5000,
           windows: [
             {
-              windowKey: "session_5h", pct: 12, resetEpochMs: 9000,
+              windowKey: "session_5h", name: "Session", unit: "percent", value: 12,
+              source: "fixture", reliability: "observed", durationMs: 18_000_000,
+              pct: 12, resetEpochMs: 9000,
               forecast: { predictedPctAtReset: 30, burnRatePctPerHour: 4, method: "history" },
             },
             {
-              windowKey: "weekly_all", pct: 40, resetEpochMs: 20000,
+              windowKey: "weekly_all", name: "Week", unit: "percent", value: 40,
+              source: "fixture", reliability: "observed", durationMs: 604_800_000,
+              pct: 40, resetEpochMs: 20000,
               forecast: { predictedPctAtReset: 70, burnRatePctPerHour: 0.3, method: "window-linear" },
             },
           ],
@@ -47,7 +52,14 @@ describe("readQuotaSnapshot", () => {
   it("defaults forecast to null when a window has none yet (fresh poll, no history)", () => {
     writeFileSync(path, JSON.stringify({
       generatedAtMs: 5000,
-      providers: { claude: { windows: [{ windowKey: "session_5h", pct: 5, resetEpochMs: 9000, forecast: null }] } },
+      profiles: { "claude-default": {
+        providerId: "claude", profileId: "claude-default", status: "healthy", generatedAtMs: 5000,
+        windows: [{
+          windowKey: "session_5h", name: "Session", unit: "percent", value: 5,
+          source: "fixture", reliability: "observed", durationMs: 18_000_000,
+          pct: 5, resetEpochMs: 9000, forecast: null,
+        }],
+      } },
     }));
     const snap = readQuotaSnapshot(6000, path);
     expect(snap.sessionForecast).toBeNull();

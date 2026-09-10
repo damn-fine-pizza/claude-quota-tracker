@@ -9,6 +9,8 @@ import { pollOnce } from "./poller.js";
 import { printHint, printStatus, printTasks } from "./report.js";
 import { runPacedOnce } from "./paced-executor.js";
 import { CLI_NAME, getRuntimeInfo, PRODUCT_NAME } from "./version.js";
+import { TimerStore } from "./timers.js";
+import { setOverride } from "./override.js";
 
 const HELP = `${CLI_NAME} — local quota-aware backlog and scheduler for coding agents
 
@@ -33,6 +35,9 @@ Usage:
   ${CLI_NAME} dashboard [--open] local dashboard
   ${CLI_NAME} ingest             ingest Claude Code session logs
   ${CLI_NAME} paths              print config/data paths
+  ${CLI_NAME} schedule list|add|pause|resume|cancel <args>
+  ${CLI_NAME} queue preview|run [manual|priority]
+  ${CLI_NAME} override on|off [profile]
 `;
 
 function checkNodeVersion(): boolean {
@@ -50,7 +55,7 @@ export async function main(argv: string[]): Promise<void> {
   switch (cmd) {
     case "poll": {
       const latest = await pollOnce();
-      const n = Object.values(latest.providers).reduce((s, p) => s + p.windows.length, 0);
+      const n = Object.values(latest.profiles).reduce((s, p) => s + p.windows.length, 0);
       console.log(`[${PRODUCT_NAME}] polled ${n} window readings`);
       return;
     }
@@ -124,6 +129,9 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
     case "dashboard": return dashboard(argv.slice(1));
+    case "schedule": { const timers = new TimerStore(); try { if (argv[1] === "list") console.log(JSON.stringify(timers.list(), null, 2)); else if (argv[1] === "add" && (argv[2] === "timestamp" || argv[2] === "cron") && argv[3]) console.log(JSON.stringify(timers.add(argv[2], argv[3], argv[4] ? Number(argv[4]) : null), null, 2)); else if ((argv[1] === "pause" || argv[1] === "resume") && argv[2]) console.log(JSON.stringify(timers.update(Number(argv[2]),{paused:argv[1]==="pause"}),null,2)); else if(argv[1]==="cancel"&&argv[2]) console.log(JSON.stringify({cancelled:timers.cancel(Number(argv[2]))})); else { console.error("usage: schedule list|add|pause|resume|cancel"); process.exitCode = 1; } } finally { timers.close(); } return; }
+    case "queue": { if(argv[1]==="run"){ const ok=await runPacedOnce(); process.exitCode=ok?0:1; return; } const { planQueue } = await import("./queue-planner.js"); const { Store } = await import("./store.js"); const { SchedulerMetaStore } = await import("./scheduler-meta.js"); const { createDefaultProviderRegistry } = await import("./providers/index.js"); const { resolveBackend } = await import("./dispatch.js"); const store=new Store((await import("./config.js")).DB_PATH); const meta=new SchedulerMetaStore(); try { const tasks=store.listTasks(["queued","carried_over"]); const m=new Map(tasks.map(t=>[t.id,meta.getOrDefault(t.id)])); const registry=createDefaultProviderRegistry(); console.log(JSON.stringify(planQueue({tasks,meta:m,mode:argv[2]==="manual"?"manual":"priority",nowMs:Date.now(),cutoffMs:null,estimates:new Map(tasks.map(t=>[t.id,m.get(t.id)!.estimatedTokens??0]),),dispatchReason:(task,scheduling,providerId,profileId)=>{const verdict=resolveBackend(registry,task,{...scheduling,providerId,profileId},"automatic");return verdict.ok?null:verdict.reasonCode;}}),null,2)); } finally {meta.close();store.close();} return; }
+    case "override": { if(argv[1]!=="on"&&argv[1]!=="off"){process.exitCode=1;return;} console.log(JSON.stringify(setOverride({enabled:argv[1]==="on",reserveProfile:argv[2]??null,preempt:argv[1]==="on"}),null,2)); return; }
     case "paths": console.log(`config: ${CONFIG_PATH}`); console.log(`data:   ${DATA_DIR}`); return;
     default:
       console.log(HELP);

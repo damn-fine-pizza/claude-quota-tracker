@@ -117,6 +117,10 @@ describe("executeTask", () => {
     const recs = store.estimationRecords();
     expect(recs).toHaveLength(1);
     expect(recs[0].actualTokens).toBe(15);
+    expect(store.runAuditRecords(task.id)[0]).toMatchObject({
+      providerId: "claude", profileId: "claude-default", backendId: "claude-cli",
+      permissionClass: "read-only", runCwd: "/tmp",
+    });
     store.close();
   });
 

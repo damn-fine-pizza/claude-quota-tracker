@@ -35,10 +35,21 @@ mkdirSync(DATA_DIR, { recursive: true });
 // runManualTask actually reaches the claim step instead of holding on the guard.
 writeFileSync(LATEST_JSON_PATH, JSON.stringify({
   generatedAtMs: Date.now(),
-  providers: { claude: { windows: [
-    { windowKey: "session_5h", pct: 10, resetEpochMs: Date.now() + 3_600_000 },
-    { windowKey: "weekly_all", pct: 10, resetEpochMs: Date.now() + 7 * 86_400_000 },
-  ] } },
+  profiles: { "claude-default": {
+    providerId: "claude", profileId: "claude-default", status: "healthy", generatedAtMs: Date.now(),
+    windows: [
+      {
+        windowKey: "session_5h", name: "Session", unit: "percent", value: 10,
+        source: "fixture", reliability: "observed", durationMs: 18_000_000,
+        pct: 10, resetEpochMs: Date.now() + 3_600_000,
+      },
+      {
+        windowKey: "weekly_all", name: "Week", unit: "percent", value: 10,
+        source: "fixture", reliability: "observed", durationMs: 604_800_000,
+        pct: 10, resetEpochMs: Date.now() + 7 * 86_400_000,
+      },
+    ],
+  } },
 }));
 
 const LOCK_PATH = join(DATA_DIR, "scheduler.lock");

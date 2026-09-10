@@ -1,6 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
 import { LATEST_JSON_PATH } from "./config.js";
 import type { Forecast } from "./forecast.js";
+import {
+  CLAUDE_DEFAULT_PROFILE_ID, CLAUDE_PROVIDER_ID, profileCache, readLatestCache,
+} from "./latest-cache.js";
 import type { GuardInput } from "./tasks.js";
 
 export interface QuotaSnapshot {
@@ -15,20 +17,16 @@ export function readQuotaSnapshot(nowMs: number, path: string = LATEST_JSON_PATH
   const empty: GuardInput = {
     nowMs, sessionPct: null, sessionResetMs: null, weeklyPct: null, weeklyResetMs: null,
   };
-  if (!existsSync(path)) return { generatedAtMs: null, guard: empty, sessionForecast: null, weeklyForecast: null };
+  const latest = readLatestCache(path);
+  if (!latest) return { generatedAtMs: null, guard: empty, sessionForecast: null, weeklyForecast: null };
   try {
-    const j = JSON.parse(readFileSync(path, "utf8")) as {
-      generatedAtMs: number;
-      providers: Record<string, { windows: Array<{
-        windowKey: string; pct: number | null; resetEpochMs: number | null; forecast?: Forecast | null;
-      }> }>;
-    };
-    const windows = j.providers["claude"]?.windows ?? [];
+    const profile = profileCache(latest, CLAUDE_PROVIDER_ID, CLAUDE_DEFAULT_PROFILE_ID);
+    const windows = profile?.windows ?? [];
     const find = (key: string) => windows.find((w) => w.windowKey === key);
     const session = find("session_5h");
     const weekly = find("weekly_all");
     return {
-      generatedAtMs: j.generatedAtMs,
+      generatedAtMs: profile?.generatedAtMs ?? null,
       guard: {
         nowMs,
         sessionPct: session?.pct ?? null,
